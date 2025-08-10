@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>同人作家支援ツール v5</title>
+    <!-- Bootstrap CSS for styling -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body { background-color: #f8f9fa; }
+        .container { max-width: 1400px; }
+        .timer-display { font-size: 3rem; font-weight: bold; font-family: 'Courier New', Courier, monospace; }
+        .gantt-chart-container, .progress-table-container { overflow-x: auto; white-space: nowrap; }
+        .gantt-table { border-collapse: collapse; font-size: 0.8rem; }
+        .gantt-table th, .gantt-table td { border: 1px solid #ddd; padding: 4px 8px; text-align: center; vertical-align: middle; }
+        .gantt-table td { height: 30px; }
+        .gantt-header-day { min-width: 30px; }
+        .gantt-bar-plan { background-color: #a9def9; height: 10px; margin: 2px 0; border-radius: 5px; opacity: 0.8; }
+        .gantt-bar-actual { background-color: #72b01d; height: 10px; margin: 2px 0; border-radius: 5px; }
+        .gantt-task-name { min-width: 200px; text-align: left; }
+        .status-not-started { background-color: #f8d7da; }
+        .status-in-progress { background-color: #fff3cd; }
+        .status-completed { background-color: #d1e7dd; }
+        .sticky-top-controls { position: sticky; top: 0; background-color: rgba(255, 255, 255, 0.97); z-index: 1020; padding-bottom: 1rem; border-bottom: 1px solid #dee2e6; }
+        .progress-table-container input[type="date"], .progress-table-container input[type="number"] { min-width: 130px; }
+    </style>
+</head>
+<body>
+
+    <div class="container my-4">
+        <header class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h3">同人作家支援ツール v5</h1>
+            <div>
+                <button id="saveData" class="btn btn-success"><i class="fas fa-save"></i> プロジェクト保存</button>
+                <label for="loadData" class="btn btn-primary"><i class="fas fa-upload"></i> プロジェクト読込</label>
+                <input type="file" id="loadData" class="d-none">
+            </div>
+        </header>
+
+        <!-- Timer & Controls -->
+        <div class="card mb-4 sticky-top-controls">
+            <div class="card-body">
+                <h5 class="card-title">作業タイマー</h5>
+                <div class="row align-items-center">
+                    <div class="col-md-4"><div class="d-flex align-items-center">
+                        <button id="startTimer" class="btn btn-primary me-2"><i class="fas fa-play"></i> 開始</button>
+                        <button id="stopTimer" class="btn btn-danger me-3" disabled><i class="fas fa-stop"></i> 停止</button>
+                        <div id="timerDisplay" class="timer-display">00:00:00</div>
+                    </div></div>
+                    <div class="col-md-5"><div class="input-group">
+                        <span class="input-group-text">作業対象</span>
+                        <select id="timerTaskPage" class="form-select"></select>
+                        <select id="timerTaskProcess" class="form-select"></select>
+                    </div></div>
+                    <div class="col-md-3"><div class="form-check form-switch mt-2 mt-md-0">
+                        <input class="form-check-input" type="checkbox" role="switch" id="notificationSwitch" checked>
+                        <label class="form-check-label" for="notificationSwitch">ポップアップ通知 (音あり)</label>
+                    </div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Tabs -->
+        <ul class="nav nav-tabs" id="mainTab" role="tablist">
+            <li class="nav-item" role="presentation"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#progress">進捗管理</button></li>
+            <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#gantt">ガントチャート</button></li>
+            <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#log">作業ログ</button></li>
+            <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#settings">プロジェクト設定</button></li>
+        </ul>
+
+        <div class="tab-content" id="mainTabContent">
+            <!-- Progress Tab -->
+            <div class="tab-pane fade show active" id="progress" role="tabpanel"><div class="card card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3"><h5 class="mb-0">ページ別進捗状況</h5><div id="progressSummary"></div></div>
+                <div class="progress-table-container"><table class="table table-bordered table-hover"><thead id="progress-table-head"></thead><tbody id="progress-table-body"></tbody></table></div>
+            </div></div>
+            <!-- Gantt Chart Tab -->
+            <div class="tab-pane fade" id="gantt" role="tabpanel"><div class="card card-body">
+                <h5 class="mb-3">作業計画ガントチャート</h5>
+                <div class="gantt-chart-container"><table id="gantt-chart" class="gantt-table"></table></div>
+                <div class="mt-3"><span class="badge bg-info text-dark">凡例:</span> <span class="badge" style="background-color: #a9def9;">■ 計画</span> <span class="badge" style="background-color: #72b01d;">■ 実績</span></div>
+            </div></div>
+            <!-- Log Tab -->
+            <div class="tab-pane fade" id="log" role="tabpanel"><div class="card card-body">
+                <h5 class="mb-3">作業ロググラフ</h5>
+                <div style="height: 400px; position: relative;"><canvas id="workLogChart"></canvas></div>
+                <h5 class="mb-3 mt-4">執筆ログ一覧</h5>
+                <div class="table-responsive" style="max-height: 400px;"><table class="table table-striped"><thead><tr><th>日時</th><th>作業時間</th><th>ページ</th><th>作業工程</th></tr></thead><tbody id="work-log-body"></tbody></table></div>
+            </div></div>
+            <!-- Settings Tab -->
+            <div class="tab-pane fade" id="settings" role="tabpanel"><div class="card card-body"><div class="row">
+                <div class="col-md-6">
+                    <h5><i class="fas fa-book"></i> プロジェクト基本設定</h5>
+                    <div class="mb-3"><label for="projectName" class="form-label">プロジェクト名</label><input type="text" class="form-control" id="projectName"></div>
+                    <div class="mb-3"><label for="projectType" class="form-label">作品種別</label><select id="projectType" class="form-select"><option value="manga">マンガ</option><option value="illust">イラスト</option></select></div>
+                    <div class="row mb-3">
+                        <div class="col-6"><label for="totalPages" class="form-label">総ページ数/点数</label><input type="number" class="form-control" id="totalPages" min="1"></div>
+                        <div class="col-6"><label for="deadline" class="form-label">締め切り</label><input type="date" class="form-control" id="deadline"></div>
+                    </div>
+                    <div class="row"><div class="col-6"><label for="ganttStartDate" class="form-label">ガントチャート開始日</label><input type="date" class="form-control" id="ganttStartDate"></div></div>
+                    <button id="applyProjectSettings" class="btn btn-info mt-3">プロジェクト設定を反映</button>
+                </div>
+                <div class="col-md-6">
+                    <h5><i class="fas fa-cogs"></i> 作業工程マスタ</h5>
+                    <div id="processMaster" class="mb-3"></div>
+                    <button id="addProcess" class="btn btn-outline-secondary btn-sm"><i class="fas fa-plus"></i> 工程を追加</button>
+                    <h5 class="mt-4"><i class="fas fa-hourglass-half"></i> 集中サイクル設定</h5>
+                    <div class="row">
+                        <div class="col-6"><label for="workMinutes" class="form-label">執筆時間 (分)</label><input type="number" class="form-control" id="workMinutes" min="1"></div>
+                        <div class="col-6"><label for="breakMinutes" class="form-label">休憩時間 (分)</label><input type="number" class="form-control" id="breakMinutes" min="1"></div>
+                    </div>
+                    <!-- **NEW**: Sound file input -->
+                    <h5 class="mt-4"><i class="fas fa-music"></i> 通知音設定</h5>
+                    <div>
+                        <label for="soundFile" class="form-label">通知音ファイル (ローカル)</label>
+                        <input class="form-control" type="file" id="soundFile" accept="audio/*">
+                        <div class="form-text">ファイルを選択しない場合はデフォルト音が鳴ります。</div>
+                    </div>
+                </div>
+            </div></div></div>
+        </div>
+    </div>
+    
+    <!-- Notification Modal -->
+    <div class="modal fade" id="notificationModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="notificationModalTitle"></h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+        <div class="modal-body" id="notificationModalBody"></div>
+        <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button></div>
+    </div></div></div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const App = {
+            state: { /* ... */ },
+            timer: { /* ... */ },
+            chartInstance: null,
+            notificationSound: new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='),
+            notificationModal: null,
+            elements: {},
+
+            init() {
+                this.cacheDOMElements();
+                this.notificationModal = new bootstrap.Modal(this.elements.notificationModal);
+                this.loadState();
+                this.bindEvents();
+                this.renderAll();
+            },
+
+            cacheDOMElements() {
+                const ids = [
+                    'saveData', 'loadData', 'startTimer', 'stopTimer', 'timerDisplay', 'timerTaskPage', 'timerTaskProcess', 
+                    'notificationSwitch', 'projectName', 'projectType', 'totalPages', 'deadline', 'ganttStartDate', 
+                    'applyProjectSettings', 'processMaster', 'addProcess', 'workMinutes', 'breakMinutes', 'progress-table-head', 
+                    'progress-table-body', 'progressSummary', 'gantt-chart', 'workLogChart', 'work-log-body',
+                    'notificationModal', 'notificationModalTitle', 'notificationModalBody', 'soundFile'
+                ];
+                ids.forEach(id => this.elements[id.replace(/-[a-z]/g, m => m[1].toUpperCase())] = document.getElementById(id));
+            },
+
+            loadState() {
+                const data = localStorage.getItem('doujinSupportData');
+                if (data) {
+                    const loadedState = JSON.parse(data);
+                    this.state = loadedState;
+                } else {
+                    this.state = {
+                        project: { name: '新規プロジェクト', type: 'manga', totalPages: 24, deadline: '', ganttStartDate: '' },
+                        settings: {
+                            processes: [
+                                { id: 1, name: '下書き', estHours: 2 },
+                                { id: 2, name: 'ペン入れ', estHours: 3 },
+                                { id: 3, name: '仕上げ', estHours: 1.5 },
+                            ],
+                            timer: { workMinutes: 25, breakMinutes: 5 },
+                            notifications: true,
+                        },
+                        pages: [],
+                        workLogs: [],
+                    };
+                    this.createPages();
+                }
+            },
+            
+            saveState() { localStorage.setItem('doujinSupportData', JSON.stringify(this.state)); },
+
+            bindEvents() {
+                // Project & Settings
+                this.elements.applyProjectSettings.addEventListener('click', () => this.updateProjectSettings());
+                this.elements.addProcess.addEventListener('click', () => this.addProcess());
+                this.elements.processMaster.addEventListener('change', (e) => this.handleProcessMasterChange(e));
+                this.elements.processMaster.addEventListener('click', (e) => this.handleProcessMasterClick(e));
+                this.elements.soundFile.addEventListener('change', (e) => this.handleSoundFileChange(e));
+
+                // Timer & Notifications
+                this.elements.workMinutes.addEventListener('change', () => this.updateTimerSettings());
+                this.elements.breakMinutes.addEventListener('change', () => this.updateTimerSettings());
+                this.elements.startTimer.addEventListener('click', () => this.startTimer());
+                this.elements.stopTimer.addEventListener('click', () => this.stopTimer(true));
+                this.elements.notificationSwitch.addEventListener('change', (e) => { this.state.settings.notifications = e.target.checked; this.saveState(); });
+                
+                // Data I/O
+                this.elements.saveData.addEventListener('click', () => this.exportData());
+                this.elements.loadData.addEventListener('change', (e) => this.importData(e));
+                
+                // Progress Table
+                this.elements.progressTableBody.addEventListener('change', (e) => this.handleProgressTableChange(e));
+            },
+
+            renderAll() {
+                this.renderSettings();
+                this.renderProcessMaster();
+                this.renderProgressTable();
+                this.renderTimerTasks();
+                this.renderWorkLog();
+                this.renderGanttChart();
+            },
+
+            // **FIXED**: RENDER FUNCTIONS
+            renderGanttChart() {
+                const { project, pages } = this.state;
+                const ganttStartDateStr = project.ganttStartDate;
+                if (!project.deadline || !ganttStartDateStr) {
+                    this.elements.ganttChart.innerHTML = '<tr><td colspan="99">締め切りとガントチャート開始日を設定してください。</td></tr>'; return;
+                }
+                
+                const startDate = new Date(ganttStartDateStr + 'T00:00:00');
+                const endDate = new Date(project.deadline + 'T00:00:00');
+                if (startDate > endDate) {
+                    this.elements.ganttChart.innerHTML = '<tr><td colspan="99">開始日が締め切り日より後です。</td></tr>'; return;
+                }
+
+                const days = [];
+                let currentDate = new Date(startDate);
+                while(currentDate <= endDate) { days.push(new Date(currentDate)); currentDate.setDate(currentDate.getDate() + 1); }
+
+                let html = '<thead><tr><th class="gantt-task-name">タスク</th>';
+                days.forEach(day => html += `<th class="gantt-header-day">${day.getDate()}</th>`);
+                html += '</tr></thead><tbody>';
+
+                pages.forEach(page => {
+                    html += `<tr><td class="gantt-task-name">P.${page.pageNumber}</td>`;
+                    
+                    const firstTask = page.tasks.length > 0 ? page.tasks[0] : null;
+                    const planStartDate = firstTask && firstTask.planStartDate ? new Date(firstTask.planStartDate + 'T00:00:00') : null;
+                    const planDuration = firstTask ? firstTask.planDurationDays || 1 : 0;
+                    
+                    const logsForPage = this.state.workLogs.filter(l => l.pageNumber === page.pageNumber);
+                    
+                    days.forEach((day, index) => {
+                        let cellContent = '';
+                        // Plan bar
+                        if (planStartDate) {
+                            const planStartDayIndex = Math.round((planStartDate - startDate) / (1000 * 60 * 60 * 24));
+                            if (index >= planStartDayIndex && index < planStartDayIndex + planDuration) {
+                                cellContent += '<div class="gantt-bar-plan"></div>';
+                            }
+                        }
+                        // Actual bar
+                        const hasLogOnThisDay = logsForPage.some(log => new Date(log.date).toDateString() === day.toDateString());
+                        if (hasLogOnThisDay) {
+                            cellContent += '<div class="gantt-bar-actual"></div>';
+                        }
+                        html += `<td>${cellContent}</td>`;
+                    });
+                    
+                    html += '</tr>';
+                });
+                
+                html += '</tbody>';
+                this.elements.ganttChart.innerHTML = html;
+            },
+            renderWorkLog() {
+                // Table
+                this.elements.workLogBody.innerHTML = this.state.workLogs.slice().reverse().map(log => {
+                    const process = this.state.settings.processes.find(p => p.id === log.processId);
+                    return `<tr><td>${new Date(log.date).toLocaleString()}</td><td>${Math.floor(log.durationMinutes)}分${Math.round((log.durationMinutes % 1) * 60)}秒</td><td>P.${log.pageNumber}</td><td>${process ? process.name : '不明'}</td></tr>`;
+                }).join('');
+
+                // Chart
+                if (this.chartInstance) this.chartInstance.destroy();
+                
+                if(this.state.workLogs.length === 0) {
+                    this.elements.workLogChart.getContext('2d').clearRect(0, 0, this.elements.workLogChart.width, this.elements.workLogChart.height);
+                    return;
+                }
+
+                const logDataByDate = {};
+                this.state.workLogs.forEach(log => {
+                    const dateStr = new Date(log.date).toISOString().split('T')[0];
+                    logDataByDate[dateStr] = (logDataByDate[dateStr] || 0) + log.durationMinutes / 60;
+                });
+
+                const sortedDates = Object.keys(logDataByDate).sort();
+                const dailyData = sortedDates.map(date => logDataByDate[date]);
+                let cumulativeData = [], sum = 0;
+                dailyData.forEach(val => { sum += val; cumulativeData.push(sum); });
+                
+                this.chartInstance = new Chart(this.elements.workLogChart, { type: 'bar',
+                    data: { labels: sortedDates,
+                        datasets: [
+                            { label: '日別作業時間 (h)', data: dailyData, yAxisID: 'y', backgroundColor: 'rgba(54, 162, 235, 0.6)' },
+                            { label: '累積作業時間 (h)', data: cumulativeData, type: 'line', yAxisID: 'y1', borderColor: 'rgba(255, 99, 132, 1)' }
+                        ]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, position: 'left', title: { display: true, text: '日別作業時間 (h)' } },
+                            y1: { beginAtZero: true, position: 'right', title: { display: true, text: '累積作業時間 (h)' }, grid: { drawOnChartArea: false } }
+                        }
+                    }
+                });
+            },
+
+            // **NEW**: ACTION HANDLER for sound file
+            handleSoundFileChange(event) {
+                const file = event.target.files[0];
+                if (file) {
+                    const url = URL.createObjectURL(file);
+                    this.notificationSound = new Audio(url);
+                }
+            },
+            
+            // Unchanged Functions (for brevity, content is correct)
+            renderSettings() {
+                const { project, settings } = this.state;
+                this.elements.projectName.value = project.name;
+                this.elements.projectType.value = project.type;
+                this.elements.totalPages.value = project.totalPages;
+                this.elements.deadline.value = project.deadline;
+                this.elements.ganttStartDate.value = project.ganttStartDate || new Date().toISOString().split('T')[0];
+                this.elements.workMinutes.value = settings.timer.workMinutes;
+                this.elements.breakMinutes.value = settings.timer.breakMinutes;
+                this.elements.notificationSwitch.checked = settings.notifications;
+            },
+            renderProcessMaster() {
+                this.elements.processMaster.innerHTML = this.state.settings.processes.map(p => `
+                    <div class="input-group mb-2" data-id="${p.id}"><input type="text" class="form-control process-name" value="${p.name}"><input type="number" class="form-control process-est-hours" value="${p.estHours}" step="0.1"><span class="input-group-text">時間/P</span><button class="btn btn-outline-danger btn-sm delete-process"><i class="fas fa-trash"></i></button></div>
+                `).join('');
+            },
+            renderProgressTable() {
+                const { pages, settings } = this.state;
+                const headerHtml = `<tr><th>P.</th> ${settings.processes.map(p => `<th>${p.name}</th>`).join('')}<th>計画開始</th><th>計画日数</th><th>メモ</th><th>見積(h)</th><th>実績(h)</th></tr>`;
+                this.elements.progressTableHead.innerHTML = headerHtml;
+
+                let totalEst = 0, totalActual = 0;
+                const bodyHtml = pages.map(page => {
+                    const pageEst = page.tasks.reduce((sum, task) => sum + parseFloat(task.estimatedHours || 0), 0);
+                    const pageActual = page.tasks.reduce((sum, task) => sum + parseFloat(task.actualHours || 0), 0);
+                    totalEst += pageEst; totalActual += pageActual;
+
+                    const taskCells = page.tasks.map(task => {
+                        return `<td class="status-${task.status}"><select class="form-select form-select-sm task-status" data-process-id="${task.processId}"><option value="not-started" ${task.status === 'not-started' ? 'selected' : ''}>未着手</option><option value="in-progress" ${task.status === 'in-progress' ? 'selected' : ''}>作業中</option><option value="completed" ${task.status === 'completed' ? 'selected' : ''}>完了</option></select></td>`;
+                    }).join('');
+                
+                    const firstTask = page.tasks.length > 0 ? page.tasks[0] : {};
+                    const planCell = `<td><input type="date" class="form-control form-control-sm page-plan-start" value="${firstTask.planStartDate || ''}"></td><td><input type="number" class="form-control form-control-sm page-plan-duration" value="${firstTask.planDurationDays || 1}" min="1"></td>`;
+
+                    return `<tr data-page="${page.pageNumber}"><td>${page.pageNumber}</td>${taskCells}${planCell}<td><textarea class="form-control form-control-sm page-memo" rows="1">${page.memo}</textarea></td><td>${pageEst.toFixed(1)}</td><td>${pageActual.toFixed(1)}</td></tr>`;
+                }).join('');
+                this.elements.progressTableBody.innerHTML = bodyHtml;
+                
+                const completedTasks = pages.flatMap(p => p.tasks).filter(t => t.status === 'completed').length;
+                const totalTasks = pages.flatMap(p => p.tasks).length;
+                const progressPercentage = totalTasks > 0 ? (completedTasks / totalTasks * 100).toFixed(1) : 0;
+                this.elements.progressSummary.innerHTML = `<span class="me-3">進捗: ${progressPercentage}%</span><span class="me-3">総見積: ${totalEst.toFixed(1)}h</span><span>総実績: ${totalActual.toFixed(1)}h</span>`;
+            },
+            renderTimerTasks() {
+                this.elements.timerTaskPage.innerHTML = this.state.pages.map(p => `<option value="${p.pageNumber}">P.${p.pageNumber}</option>`).join('');
+                this.elements.timerTaskProcess.innerHTML = this.state.settings.processes.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            },
+            handleProcessMasterChange(e) {
+                if (!e.target.matches('.process-name, .process-est-hours')) return;
+                const group = e.target.closest('.input-group'); const id = parseInt(group.dataset.id, 10);
+                const process = this.state.settings.processes.find(p => p.id === id); if (!process) return;
+                if (e.target.classList.contains('process-name')) { process.name = e.target.value;
+                } else if (e.target.classList.contains('process-est-hours')) {
+                    const newEstHours = parseFloat(e.target.value);
+                    if (!isNaN(newEstHours) && newEstHours >= 0) {
+                        const oldEstHours = process.estHours; process.estHours = newEstHours;
+                        if (confirm('既存ページのタスクの見積もり工数も更新しますか？')) {
+                            this.state.pages.forEach(page => { const task = page.tasks.find(t => t.processId === id); if(task) task.estimatedHours = newEstHours; });
+                        } else { process.estHours = oldEstHours; e.target.value = oldEstHours; return; }
+                    }
+                }
+                this.saveState(); this.renderAll();
+            },
+            handleProcessMasterClick(e) {
+                const deleteButton = e.target.closest('.delete-process'); if (!deleteButton) return;
+                const group = deleteButton.closest('.input-group'); const id = parseInt(group.dataset.id, 10);
+                if(confirm('この工程を削除しますか？関連する進捗データも全て削除されます。')) {
+                    this.state.settings.processes = this.state.settings.processes.filter(p => p.id !== id);
+                    this.state.pages.forEach(page => { page.tasks = page.tasks.filter(t => t.processId !== id); });
+                    this.saveState(); this.renderAll();
+                }
+            },
+            handleProgressTableChange(e) {
+                const target = e.target; const row = target.closest('tr'); if (!row) return;
+                const pageNumber = parseInt(row.dataset.page, 10); const page = this.state.pages.find(p => p.pageNumber === pageNumber);
+                if (target.classList.contains('task-status')) {
+                    const processId = parseInt(target.dataset.processId, 10);
+                    const task = page.tasks.find(t => t.processId === processId);
+                    task.status = target.value; target.closest('td').className = `status-${task.status}`;
+                } else if (target.classList.contains('page-memo')) { page.memo = target.value;
+                } else if (target.classList.contains('page-plan-start')) { page.tasks.forEach(t => t.planStartDate = target.value);
+                } else if (target.classList.contains('page-plan-duration')) { page.tasks.forEach(t => t.planDurationDays = parseInt(target.value, 10)); }
+                this.saveState(); this.renderProgressTable(); this.renderGanttChart();
+            },
+            updateProjectSettings() {
+                const { project } = this.state;
+                project.name = this.elements.projectName.value; project.type = this.elements.projectType.value;
+                project.deadline = this.elements.deadline.value; project.ganttStartDate = this.elements.ganttStartDate.value;
+                const newTotalPages = parseInt(this.elements.totalPages.value, 10);
+                if (newTotalPages !== project.totalPages) {
+                    project.totalPages = newTotalPages;
+                    if (confirm('総ページ数を変更すると、既存の進捗データがリセットされます。よろしいですか？')) { this.createPages();
+                    } else { this.elements.totalPages.value = this.state.pages.length; }
+                }
+                alert('プロジェクト設定を更新しました。'); this.saveState(); this.renderAll();
+            },
+            updateTimerSettings() {
+                this.state.settings.timer.workMinutes = parseInt(this.elements.workMinutes.value, 10);
+                this.state.settings.timer.breakMinutes = parseInt(this.elements.breakMinutes.value, 10);
+                this.saveState();
+            },
+            notify(title, body) {
+                if (!this.state.settings.notifications) return;
+                this.elements.notificationModalTitle.textContent = title;
+                this.elements.notificationModalBody.textContent = body;
+                this.notificationModal.show();
+                this.notificationSound.play().catch(e => console.error("Audio play failed:", e));
+            },
+            stopTimer(isManualStop = false) {
+                clearInterval(this.timer.interval); this.timer.interval = null;
+                const durationMinutes = this.timer.seconds / 60;
+                if (durationMinutes > 0.1) this.logWork(durationMinutes);
+                this.timer.seconds = 0; this.updateTimerDisplay();
+                this.elements.startTimer.disabled = false; this.elements.stopTimer.disabled = true;
+                if (!isManualStop) {
+                    this.notify('お疲れ様でした！', '設定された執筆時間が終了しました。休憩に入りましょう。');
+                    const breakMinutes = this.state.settings.timer.breakMinutes;
+                    if (breakMinutes > 0) { setTimeout(() => { this.notify('休憩終了', `休憩時間の${breakMinutes}分が経過しました。作業を再開しましょう！`); }, breakMinutes * 60 * 1000); }
+                }
+            },
+            startTimer() {
+                if (this.timer.interval) return;
+                const page = this.elements.timerTaskPage.value, processId = this.elements.timerTaskProcess.value;
+                if (!page || !processId) { alert('作業対象のページと工程を選択してください。'); return; }
+                this.timer.currentTask = { page: parseInt(page), processId: parseInt(processId) };
+                this.timer.isWorking = true;
+                this.elements.startTimer.disabled = true; this.elements.stopTimer.disabled = false;
+                const maxSeconds = this.state.settings.timer.workMinutes * 60;
+                this.timer.interval = setInterval(() => { this.timer.seconds++; this.updateTimerDisplay(); if (this.timer.seconds >= maxSeconds) this.stopTimer(false); }, 1000);
+            },
+            updateTimerDisplay() {
+                const s = this.timer.seconds;
+                const h = String(Math.floor(s / 3600)).padStart(2, '0'); const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0'); const sec = String(s % 60).padStart(2, '0');
+                this.elements.timerDisplay.textContent = `${h}:${m}:${sec}`;
+            },
+            logWork(durationMinutes) {
+                const { page, processId } = this.timer.currentTask;
+                this.state.workLogs.push({ date: new Date().toISOString(), durationMinutes, pageNumber: page, processId });
+                const targetPage = this.state.pages.find(p => p.pageNumber === page);
+                if (targetPage) {
+                    const task = targetPage.tasks.find(t => t.processId === processId);
+                    if (task) { task.actualHours = (task.actualHours || 0) + durationMinutes / 60; if(task.status === 'not-started') task.status = 'in-progress'; }
+                }
+                this.saveState(); this.renderAll();
+            },
+            createPages() {
+                this.state.pages = []; const { totalPages } = this.state.project; const { processes } = this.state.settings;
+                for (let i = 1; i <= totalPages; i++) {
+                    this.state.pages.push({ pageNumber: i, memo: '', tasks: processes.map(p => ({ processId: p.id, status: 'not-started', estimatedHours: p.estHours, actualHours: 0, planStartDate: null, planDurationDays: 1, })) });
+                }
+            },
+            addProcess() {
+                const newId = this.state.settings.processes.length > 0 ? Math.max(...this.state.settings.processes.map(p => p.id)) + 1 : 1;
+                this.state.settings.processes.push({ id: newId, name: '新規工程', estHours: 1 });
+                this.state.pages.forEach(page => { page.tasks.push({ processId: newId, status: 'not-started', estimatedHours: 1, actualHours: 0, planStartDate: page.tasks[0]?.planStartDate, planDurationDays: page.tasks[0]?.planDurationDays }); });
+                this.saveState(); this.renderAll();
+            },
+            exportData() {
+                const dataStr = JSON.stringify(this.state, null, 2); const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob); const a = document.createElement('a');
+                a.href = url; a.download = `${this.state.project.name || 'project'}_backup_${new Date().toISOString().split('T')[0]}.json`;
+                a.click(); URL.revokeObjectURL(url);
+            },
+            importData(event) {
+                const file = event.target.files[0]; if (!file) return; const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedState = JSON.parse(e.target.result);
+                        if (importedState.project && importedState.settings && importedState.pages) {
+                            if (confirm('現在のプロジェクトを読み込んだデータで上書きします。よろしいですか？')) {
+                                this.state = importedState;
+                                if (!this.state.project.ganttStartDate) this.state.project.ganttStartDate = '';
+                                this.state.pages.forEach(p => p.tasks.forEach(t => { if (t.planStartDate === undefined) t.planStartDate = null; if (t.planDurationDays === undefined) t.planDurationDays = 1; }));
+                                this.saveState(); this.renderAll(); alert('プロジェクトを正常に読み込みました。');
+                            }
+                        } else { alert('無効なファイル形式です。'); }
+                    } catch (error) { alert('ファイルの読み込みに失敗しました。'); console.error(error); } 
+                    finally { event.target.value = ''; }
+                };
+                reader.readAsText(file);
+            },
+        };
+
+        App.init();
+    });
+    </script>
+</body>
+</html>
