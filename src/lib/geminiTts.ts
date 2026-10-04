@@ -1,8 +1,8 @@
-import { STORES, withStore } from "@/lib/db";
+import { TtsError, type VoiceSource } from "@/lib/ttsCache";
 
 /**
  * Gemini（Google AI Studio）の音声合成で、自然な声のセリフを作る。
- * 作った音声はブラウザ（IndexedDB）に保存し、2回目からは保存したものを鳴らす。
+ * 作った音声は ttsCache でブラウザに保存し、2回目からは保存したものを鳴らす。
  * API キーはこの PC のブラウザにだけ保存し、Google の API 以外には送らない。
  */
 
@@ -99,16 +99,6 @@ export function saveApiKey(key: string): void {
 
 // ---- 音声の生成 ----
 
-export class GeminiTtsError extends Error {
-  constructor(
-    message: string,
-    readonly kind: "auth" | "rate-limit" | "other",
-    readonly retryAfterMs = 0,
-  ) {
-    super(message);
-  }
-}
-
 function base64ToBytes(base64: string): Uint8Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -161,16 +151,16 @@ async function requestSpeech(model: string, text: string, character: VoiceCharac
   const body: unknown = await res.json().catch(() => null);
   if (!res.ok) {
     const message = (body as { error?: { message?: string } })?.error?.message ?? `HTTP ${res.status}`;
-    if (res.status === 429) throw new GeminiTtsError("利用上限に達しました", "rate-limit", parseRetryDelay(body));
-    if (res.status === 400 && /api key/i.test(message)) throw new GeminiTtsError("API キーが正しくありません", "auth");
-    if (res.status === 401 || res.status === 403) throw new GeminiTtsError("API キーが使えません", "auth");
-    throw new GeminiTtsError(message, "other");
+    if (res.status === 429) throw new TtsError("利用上限に達しました", "rate-limit", parseRetryDelay(body));
+    if (res.status === 400 && /api key/i.test(message)) throw new TtsError("API キーが正しくありません", "auth");
+    if (res.status === 401 || res.status === 403) throw new TtsError("API キーが使えません", "auth");
+    throw new TtsError(message, "other");
   }
 
   type Part = { inlineData?: { data: string; mimeType?: string } };
   const parts = (body as { candidates?: { content?: { parts?: Part[] } }[] })?.candidates?.[0]?.content?.parts ?? [];
   const audio = parts.find((p) => p.inlineData?.data)?.inlineData;
-  if (!audio) throw new GeminiTtsError("音声が返ってきませんでした", "other");
+  if (!audio) throw new TtsError("音声が返ってきませんでした", "other");
   const rate = Number(/rate=(\d+)/.exec(audio.mimeType ?? "")?.[1] ?? 24000);
   return pcmToWav(base64ToBytes(audio.data), rate);
 }
@@ -188,107 +178,28 @@ export async function synthesize(text: string, character: VoiceCharacter, apiKey
       return blob;
     } catch (err) {
       // キーの問題や上限はモデルを変えても同じなので、そのまま伝える
-      if (err instanceof GeminiTtsError && err.kind !== "other") throw err;
+      if (err instanceof TtsError && err.kind !== "other") throw err;
       lastError = err;
     }
   }
   throw lastError;
 }
 
-// ---- 保存（キャッシュ） ----
+// ---- 音声の作り手 ----
 
-export function cacheKey(character: VoiceCharacter, text: string): string {
-  return `${character.voiceName}|${character.id}|${text}`;
-}
+/** 1つ作るごとの間隔（無料枠の毎分の上限に当たりにくくする） */
+export const GEMINI_PREPARE_INTERVAL_MS = 4000;
 
-export async function getCachedVoice(character: VoiceCharacter, text: string): Promise<Blob | null> {
-  try {
-    return (await withStore<Blob | undefined>(STORES.voiceCache, "readonly", (s) => s.get(cacheKey(character, text)))) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function putCachedVoice(character: VoiceCharacter, text: string, blob: Blob): Promise<void> {
-  await withStore(STORES.voiceCache, "readwrite", (s) => s.put(blob, cacheKey(character, text)));
-}
-
-export async function countCachedVoices(character: VoiceCharacter, texts: string[]): Promise<number> {
-  let count = 0;
-  for (const text of texts) if (await getCachedVoice(character, text)) count++;
-  return count;
-}
-
-export async function generateAndCache(text: string, character: VoiceCharacter, apiKey: string): Promise<Blob> {
-  const blob = await synthesize(text, character, apiKey);
-  await putCachedVoice(character, text, blob);
-  return blob;
-}
-
-/** 何度も同じセリフを同時に作らないよう、作成中のものを覚えておく */
-const inFlight = new Map<string, Promise<Blob>>();
-
-/** 保存がなければ裏で作っておく（次に同じセリフが出たときに使う） */
-export function generateInBackground(text: string, character: VoiceCharacter): void {
-  const apiKey = loadApiKey();
-  const key = cacheKey(character, text);
-  if (!apiKey || inFlight.has(key)) return;
-  const job = generateAndCache(text, character, apiKey).finally(() => inFlight.delete(key));
-  inFlight.set(key, job);
-  job.catch(() => {});
-}
-
-// ---- まとめて準備 ----
-
-/** 無料枠の毎分の上限に当たりにくい間隔 */
-const PREPARE_INTERVAL_MS = 4000;
-const MAX_RATE_LIMIT_WAITS = 3;
-
-export interface PrepareProgress {
-  done: number;
-  total: number;
-  /** 上限に当たって待っているときの残り秒数 */
-  waitingSec?: number;
-}
-
-/**
- * セリフをまとめて作って保存する。保存済みのものは飛ばすので、途中で止めても続きから再開できる。
- */
-export async function prepareVoices(
-  characters: VoiceCharacter[],
-  texts: string[],
-  onProgress: (progress: PrepareProgress) => void,
-  signal: AbortSignal,
-): Promise<void> {
-  const apiKey = loadApiKey();
-  if (!apiKey) throw new GeminiTtsError("API キーを入力してください", "auth");
-
-  const jobs = texts.flatMap((text) => characters.map((character) => ({ text, character })));
-  let done = 0;
-  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-  for (const { text, character } of jobs) {
-    if (signal.aborted) return;
-    if (await getCachedVoice(character, text)) {
-      onProgress({ done: ++done, total: jobs.length });
-      continue;
-    }
-
-    for (let waits = 0; ; waits++) {
-      try {
-        await generateAndCache(text, character, apiKey);
-        break;
-      } catch (err) {
-        if (!(err instanceof GeminiTtsError) || err.kind !== "rate-limit" || waits >= MAX_RATE_LIMIT_WAITS) throw err;
-        // 上限に当たったら、指定された時間だけ待ってから続ける
-        for (let left = Math.ceil(err.retryAfterMs / 1000); left > 0; left--) {
-          if (signal.aborted) return;
-          onProgress({ done, total: jobs.length, waitingSec: left });
-          await sleep(1000);
-        }
-      }
-    }
-    onProgress({ done: ++done, total: jobs.length });
-    await sleep(PREPARE_INTERVAL_MS);
-  }
+export function geminiSource(character: VoiceCharacter): VoiceSource {
+  return {
+    // 以前の保存とキーをそろえる（声の名前とキャラクターが同じなら同じ音声）
+    id: `${character.voiceName}|${character.id}`,
+    label: character.label,
+    local: false,
+    synthesize: (text) => {
+      const apiKey = loadApiKey();
+      if (!apiKey) return Promise.reject(new TtsError("API キーを入力してください", "auth"));
+      return synthesize(text, character, apiKey);
+    },
+  };
 }

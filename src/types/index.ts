@@ -81,7 +81,12 @@ export interface AppSettings {
   voiceMode: VoiceModeSetting; // カットインの読み上げ
   femaleVoiceUri: string;   // 女性の声（空なら自動）
   maleVoiceUri: string;     // 男性の声（空なら自動）
-  ttsEngine: "browser" | "gemini"; // 読み上げに使う声（ブラウザ標準 / Gemini の自然な声）
+  ttsEngine: TtsEngine;     // 読み上げに使う声
   geminiFemaleCharacter: string;   // Gemini の女性キャラクター
   geminiMaleCharacter: string;     // Gemini の男性キャラクター
+  voicevoxFemaleStyle: number;     // VOICEVOX の女性側の話者 ID
+  voicevoxMaleStyle: number;       // VOICEVOX の男性側の話者 ID
 }
+
+/** 読み上げの声: ブラウザ標準 / Gemini の自然な声 / VOICEVOX */
+export type TtsEngine = "browser" | "gemini" | "voicevox";

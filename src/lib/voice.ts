@@ -1,22 +1,18 @@
 import { Howl } from "howler";
 import { useSyncExternalStore } from "react";
-import {
-  type VoiceCharacter,
-  cacheKey,
-  generateAndCache,
-  generateInBackground,
-  getCachedVoice,
-  getCharacter,
-  loadApiKey,
-} from "@/lib/geminiTts";
+import { geminiSource, getCharacter } from "@/lib/geminiTts";
 import { soundManager } from "@/lib/soundManager";
+import { type VoiceSource, generateShared, getCachedVoice } from "@/lib/ttsCache";
+import { voicevoxSource } from "@/lib/voicevox";
+import type { AppSettings } from "@/types";
 
 /**
  * カットインの文字の読み上げ。
  * - ブラウザ標準: 内蔵の音声合成（Web Speech API）。Windows の Edge なら「Nanami」「Keita」、
  *   Chrome なら「Google 日本語」や Windows 標準の「Haruka」「Ichiro」などが使える。
- * - Gemini: Google AI Studio の自然な声。作って保存した音声を鳴らし、
- *   まだ無いセリフはブラウザ標準の声で読みつつ、次回用に裏で作っておく。
+ * - Gemini（Google AI Studio の自然な声）・VOICEVOX: 作って保存した音声を鳴らす。
+ *   まだ無いセリフは、VOICEVOX ならその場で作って鳴らし、
+ *   Gemini（または VOICEVOX が間に合わないとき）はブラウザ標準の声で読みつつ次回用に作っておく。
  */
 
 export type VoiceMode = "off" | "female" | "male" | "alternate";
@@ -111,13 +107,15 @@ export interface SpeakOptions {
   mode: VoiceMode;
   femaleVoiceUri?: string;
   maleVoiceUri?: string;
-  engine?: "browser" | "gemini";
-  femaleCharacter?: string;
-  maleCharacter?: string;
+  /** 外部の声（Gemini・VOICEVOX）。null ならブラウザ標準の声 */
+  sources?: Record<VoiceGender, VoiceSource | null>;
   volume?: number;
 }
 
-// ---- Gemini で作った音声の再生 ----
+/** PC 内の VOICEVOX は、この時間までなら作り終わるのを待ってから鳴らす */
+const LOCAL_WAIT_MS = 2500;
+
+// ---- 作った音声の再生 ----
 
 const voiceHowls = new Map<string, Howl>();
 let playingHowl: Howl | null = null;
@@ -130,8 +128,7 @@ function stopAll(): void {
   playingHowl = null;
 }
 
-function playVoiceBlob(character: VoiceCharacter, text: string, blob: Blob, volume: number): void {
-  const key = cacheKey(character, text);
+function playVoiceBlob(key: string, blob: Blob, volume: number): void {
   let howl = voiceHowls.get(key);
   if (!howl) {
     howl = new Howl({ src: [URL.createObjectURL(blob)], format: ["wav"] });
@@ -151,8 +148,10 @@ function playVoiceBlob(character: VoiceCharacter, text: string, blob: Blob, volu
   target.play();
 }
 
+const sleep = (ms: number) => new Promise<null>((resolve) => setTimeout(() => resolve(null), ms));
+
 export function speak(text: string, options: SpeakOptions): void {
-  const { mode, engine = "browser", volume = 1 } = options;
+  const { mode, volume = 1 } = options;
   if (mode === "off") return;
 
   let gender: VoiceGender;
@@ -167,24 +166,32 @@ export function speak(text: string, options: SpeakOptions): void {
   const token = ++speakToken;
   stopAll();
 
-  if (engine === "gemini") {
-    const character = getCharacter(
-      (gender === "female" ? options.femaleCharacter : options.maleCharacter) ?? "",
-      gender,
-    );
-    void getCachedVoice(character, reading).then((blob) => {
-      if (token !== speakToken) return;
-      if (blob) {
-        playVoiceBlob(character, reading, blob, volume);
-      } else {
-        speakWithBrowser(reading, gender, options);
-        generateInBackground(reading, character);
-      }
-    });
+  const source = options.sources?.[gender] ?? null;
+  if (!source) {
+    speakWithBrowser(reading, gender, options);
     return;
   }
 
-  speakWithBrowser(reading, gender, options);
+  void (async () => {
+    const cached = await getCachedVoice(source, reading);
+    if (token !== speakToken) return;
+    if (cached) {
+      playVoiceBlob(`${source.id}|${reading}`, cached, volume);
+      return;
+    }
+    const job = generateShared(source, reading);
+    job.catch(() => {});
+    if (source.local) {
+      const blob = await Promise.race([job, sleep(LOCAL_WAIT_MS)]).catch(() => null);
+      if (token !== speakToken) return;
+      if (blob) {
+        playVoiceBlob(`${source.id}|${reading}`, blob, volume);
+        return;
+      }
+    }
+    // 間に合わない・作れないときはブラウザの声で読む（作れたものは次回から使われる）
+    speakWithBrowser(reading, gender, options);
+  })();
 }
 
 function speakWithBrowser(reading: string, gender: VoiceGender, options: SpeakOptions): void {
@@ -198,7 +205,6 @@ function speakWithBrowser(reading: string, gender: VoiceGender, options: SpeakOp
   utterance.rate = STYLE[gender].rate;
   utterance.volume = volume;
 
-  // 次の演出が来たら前の読み上げは打ち切る（溜まって遅れないように）
   current = utterance;
   soundManager.duck(true);
   // cancel() で打ち切った前の読み上げの終了通知では BGM を戻さない
@@ -212,30 +218,38 @@ function speakWithBrowser(reading: string, gender: VoiceGender, options: SpeakOp
   speechSynthesis.speak(utterance);
 }
 
+/** 設定に合わせた、男女それぞれの外部の声（ブラウザ標準なら null） */
+export function voiceSources(settings: AppSettings): Record<VoiceGender, VoiceSource | null> {
+  if (settings.ttsEngine === "gemini") {
+    return {
+      female: geminiSource(getCharacter(settings.geminiFemaleCharacter, "female")),
+      male: geminiSource(getCharacter(settings.geminiMaleCharacter, "male")),
+    };
+  }
+  if (settings.ttsEngine === "voicevox") {
+    return {
+      female: voicevoxSource(settings.voicevoxFemaleStyle, "female"),
+      male: voicevoxSource(settings.voicevoxMaleStyle, "male"),
+    };
+  }
+  return { female: null, male: null };
+}
+
 /** 保存されている設定から読み上げのオプションを作る */
-export function voiceOptions(settings: {
-  voiceMode: VoiceMode;
-  femaleVoiceUri: string;
-  maleVoiceUri: string;
-  ttsEngine: "browser" | "gemini";
-  geminiFemaleCharacter: string;
-  geminiMaleCharacter: string;
-}): SpeakOptions {
+export function voiceOptions(settings: AppSettings): SpeakOptions {
   return {
     mode: settings.voiceMode,
     femaleVoiceUri: settings.femaleVoiceUri,
     maleVoiceUri: settings.maleVoiceUri,
-    engine: settings.ttsEngine,
-    femaleCharacter: settings.geminiFemaleCharacter,
-    maleCharacter: settings.geminiMaleCharacter,
+    sources: voiceSources(settings),
   };
 }
 
-/** 設定画面のテスト用。保存がなければその場で作って、Gemini の声で鳴らす */
-export async function previewGeminiCharacter(character: VoiceCharacter, text: string): Promise<void> {
+/** 設定画面のテスト用。保存がなければその場で作って、その声で鳴らす（作れなければエラー） */
+export async function previewSource(source: VoiceSource, text: string): Promise<void> {
   const reading = toReading(text);
   const token = ++speakToken;
   stopAll();
-  const blob = (await getCachedVoice(character, reading)) ?? (await generateAndCache(reading, character, loadApiKey()));
-  if (token === speakToken) playVoiceBlob(character, reading, blob, 1);
+  const blob = (await getCachedVoice(source, reading)) ?? (await generateShared(source, reading));
+  if (token === speakToken) playVoiceBlob(`${source.id}|${reading}`, blob, 1);
 }

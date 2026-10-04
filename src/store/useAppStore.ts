@@ -4,6 +4,7 @@ import { ACTIONS } from "@/lib/actions";
 import { now as clockNow } from "@/lib/clock";
 import { DEFAULT_FEMALE_CHARACTER, DEFAULT_MALE_CHARACTER } from "@/lib/geminiTts";
 import { DEFAULT_BGM_FEVER, DEFAULT_BGM_NORMAL } from "@/lib/soundManager";
+import { DEFAULT_VOICEVOX_FEMALE, DEFAULT_VOICEVOX_MALE } from "@/lib/voicevox";
 import type {
   AppSettings,
   ComboState,
@@ -174,6 +175,8 @@ const initialSettings: AppSettings = {
   ttsEngine: "browser",
   geminiFemaleCharacter: DEFAULT_FEMALE_CHARACTER,
   geminiMaleCharacter: DEFAULT_MALE_CHARACTER,
+  voicevoxFemaleStyle: DEFAULT_VOICEVOX_FEMALE,
+  voicevoxMaleStyle: DEFAULT_VOICEVOX_MALE,
 };
 
 interface AppState extends AppSettings {
@@ -403,6 +406,8 @@ export const useAppStore = create<AppState>()(
         ttsEngine: state.ttsEngine,
         geminiFemaleCharacter: state.geminiFemaleCharacter,
         geminiMaleCharacter: state.geminiMaleCharacter,
+        voicevoxFemaleStyle: state.voicevoxFemaleStyle,
+        voicevoxMaleStyle: state.voicevoxMaleStyle,
       }),
     },
   ),
