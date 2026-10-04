@@ -92,6 +92,12 @@ const strokePluck = mix(
   sweep(0.12, () => 523.25 * 2, sine, (t) => 0.15 * Math.exp(-t * 40)),
 );
 
+// Ctrl+Z（やり直し）: 巻き戻すように下がる「キュルッ」
+const undoRewind = mix(
+  sweep(0.16, (t) => 1400 * Math.pow(0.25, t / 0.16), triangle, (t) => Math.min(1, t * 300) * Math.exp(-t * 14)),
+  offset(sweep(0.05, () => 2200, sine, (t) => 0.25 * Math.exp(-t * 60)), 0.12),
+);
+
 // ---- BGM（ループ素材） ----
 
 const saw = (p) => ((p / (2 * Math.PI)) % 1) * 2 - 1;
@@ -171,14 +177,82 @@ const bgmNormal = bgm({ bpm: 130, bars: 8, bassStep: 0.5, arpStep: 0.25, arpOcta
 // 180bpm フィーバー（ハイパーポップ風・細かいアルペジオ）
 const bgmFever = bgm({ bpm: 180, bars: 8, bassStep: 0.25, arpStep: 0.125, arpOctaves: 2, hatStep: 0.25, lead: true });
 
+/** 汎用のループ曲。bar ごとにコールバックで音を置く */
+function loop(bpm, bars, perBar) {
+  const beat = 60 / bpm;
+  const barSec = beat * 4;
+  const buf = new Float32Array(Math.round(barSec * bars * SAMPLE_RATE));
+  for (let bar = 0; bar < bars; bar++) perBar({ buf, bar, t0: bar * barSec, beat, chord: CHORDS[bar % CHORDS.length] });
+  return buf;
+}
+
+const snare = (vol, decay) => {
+  let prev = 0;
+  return mix(
+    render(0.18, (t) => {
+      const n = noise();
+      const v = (n + prev) / 2; // 簡易ローパスで柔らかく
+      prev = n;
+      return vol * v * Math.exp(-t * decay);
+    }),
+    sweep(0.08, () => 190, sine, (t) => vol * 0.6 * Math.exp(-t * 30)),
+  );
+};
+
+// 80bpm Lo-fi: 柔らかいエレピ風コード、ゆったりしたベースとドラム
+const bgmLofi = loop(80, 8, ({ buf, t0, beat, chord }) => {
+  place(buf, t0, kick(0.6));
+  place(buf, t0 + beat * 2.5, kick(0.45));
+  place(buf, t0 + beat, snare(0.3, 14));
+  place(buf, t0 + beat * 3, snare(0.3, 14));
+  for (let i = 0; i < 8; i++) place(buf, t0 + i * beat * 0.5 + (i % 2 ? beat * 0.08 : 0), hat(0.12, 70));
+  const seventh = chord.tones[0] + 10;
+  for (const n of [...chord.tones, seventh]) {
+    place(buf, t0, tone(hz(n - 12), beat * 3.8, (p) => 0.8 * sine(p) + 0.2 * triangle(2 * p), 0.11, 0.7));
+  }
+  place(buf, t0, tone(hz(chord.root), beat * 1.8, sine, 0.35, 1.2));
+  place(buf, t0 + beat * 2, tone(hz(chord.root + 7), beat * 1.8, sine, 0.3, 1.2));
+});
+
+// 150bpm 8bit: 矩形波のメロディ、三角波ベース、ノイズドラム
+const CHIP_MELODY = [0, 1, 2, 1, 0, 2, 1, 2];
+const bgmChiptune = loop(150, 8, ({ buf, bar, t0, beat, chord }) => {
+  for (let b = 0; b < 4; b++) {
+    place(buf, t0 + b * beat, b % 2 ? snare(0.25, 22) : kick(0.6));
+    place(buf, t0 + b * beat + beat / 2, hat(0.15, 90));
+  }
+  for (let i = 0; i < 8; i++) {
+    place(buf, t0 + i * beat * 0.5, tone(hz(chord.root + (i % 2 ? 12 : 0)), beat * 0.45, triangle, 0.35, 3));
+    const n = chord.tones[CHIP_MELODY[(i + bar) % CHIP_MELODY.length]] + (bar % 4 === 3 && i > 5 ? 12 : 0);
+    place(buf, t0 + i * beat * 0.5, tone(hz(n), beat * 0.4, square, 0.1, 5));
+  }
+});
+
+// 160bpm ユーロビート: 4つ打ち、裏拍のオクターブベース、ノコギリ波のスタブ
+const bgmEurobeat = loop(160, 8, ({ buf, t0, beat, chord }) => {
+  for (let b = 0; b < 4; b++) {
+    place(buf, t0 + b * beat, kick(0.9));
+    if (b % 2) place(buf, t0 + b * beat, snare(0.3, 18));
+    for (let h = 0; h < 4; h++) place(buf, t0 + b * beat + (h * beat) / 4, hat(h === 2 ? 0.2 : 0.1, 80));
+    place(buf, t0 + b * beat + beat / 2, tone(hz(chord.root + 12), beat * 0.45, saw, 0.3, 6));
+  }
+  for (const at of [0, 0.75, 1.5, 2.5, 3.25]) {
+    for (const n of chord.tones) place(buf, t0 + at * beat, tone(hz(n), beat * 0.35, saw, 0.07, 8));
+  }
+});
+
 mkdirSync(outDir, { recursive: true });
 for (const [name, samples] of Object.entries({
   se_click: click,
   se_fever_impact: feverImpact,
   se_fanfare: fanfare,
   se_stroke: strokePluck,
+  se_undo: undoRewind,
   bgm_normal: bgmNormal,
   bgm_fever: bgmFever,
+  bgm_lofi: bgmLofi,
+  bgm_chiptune: bgmChiptune,
+  bgm_eurobeat: bgmEurobeat,
 })) {
   writeFileSync(join(outDir, `${name}.wav`), toWav(samples));
   console.log(`wrote public/sounds/${name}.wav`);

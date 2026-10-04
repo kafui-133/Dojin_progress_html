@@ -50,6 +50,9 @@ export default function DebugTools() {
           <button type="button" onClick={() => fakeStrokes(10)} className="rounded bg-zinc-800 px-3 py-1 hover:bg-zinc-700">
             ✏️ 線を10本
           </button>
+          <button type="button" onClick={() => handleBridgeEvent({ type: "undo" })} className="rounded bg-zinc-800 px-3 py-1 hover:bg-zinc-700">
+            ↩️ やり直し
+          </button>
           <button type="button" onClick={() => handleBridgeEvent({ type: "save" })} className="rounded bg-zinc-800 px-3 py-1 hover:bg-zinc-700">
             💾 保存
           </button>

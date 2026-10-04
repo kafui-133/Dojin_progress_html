@@ -1,8 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Maximize, Minimize, Music, VolumeX } from "lucide-react";
+import { Maximize, Minimize, Music, Settings, VolumeX } from "lucide-react";
 import { useEffect, useState } from "react";
+import SettingsDialog from "@/components/SettingsDialog";
 import { useNow } from "@/lib/clock";
 import { cn } from "@/lib/utils";
 import { getEffectiveStreak, toDateString, useAppStore } from "@/store/useAppStore";
@@ -15,6 +16,8 @@ export default function Header() {
   const setBgmOn = useAppStore((s) => s.setBgmOn);
 
   const streak = getEffectiveStreak(progress, toDateString(new Date(now)));
+
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // 別モニターで全画面表示するためのボタン
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -86,7 +89,18 @@ export default function Header() {
         >
           {isFullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
         </button>
+
+        <button
+          type="button"
+          onClick={() => setIsSettingsOpen(true)}
+          aria-label="設定"
+          title="設定（BGM・読み上げ・効果音）"
+          className="shrink-0 rounded-full bg-zinc-800 p-1.5 text-zinc-300 transition hover:bg-zinc-700 hover:text-white"
+        >
+          <Settings className="size-4" />
+        </button>
       </div>
+      {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}
     </header>
   );
 }

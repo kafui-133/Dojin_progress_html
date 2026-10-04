@@ -2,12 +2,15 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { ACTIONS } from "@/lib/actions";
 import { now as clockNow } from "@/lib/clock";
+import { DEFAULT_BGM_FEVER, DEFAULT_BGM_NORMAL } from "@/lib/soundManager";
 import type {
+  AppSettings,
   ComboState,
   FlowState,
   ProgressActionResult,
   ProgressActionType,
   StrokeResult,
+  UndoResult,
   UserProgress,
 } from "@/types";
 
@@ -29,10 +32,23 @@ export const BGM_START_COMBO = 2;
 export const DEFAULT_TARGET_PAGES = 24;
 
 // ---- クリスタ連携: 線1本ごとの報酬と「勢い」 ----
-export const STROKE_EXP = 100;
+/** 線1本の EXP = 基本 + 長さ(px) × 係数。長い線ほど多くもらえる */
+export const STROKE_BASE_EXP = 50;
+export const STROKE_EXP_PER_PX = 0.1;
+/** これより長い線は同じ扱い（極端に長いドラッグで稼げないように） */
+export const STROKE_MAX_LENGTH_PX = 2000;
 export const STROKE_COINS = 1;
-/** 線1本で溜まる勢い（20本で MAX） */
-export const FLOW_GAIN = 5;
+/** 線1本で溜まる勢い = 基本 + 長さに応じた分（平均的な線で20本ほどで MAX） */
+export const FLOW_GAIN_BASE = 3;
+export const FLOW_GAIN_PER_PX = 1 / 250;
+export const FLOW_GAIN_LENGTH_MAX = 4;
+/** やり直し（Ctrl+Z）1回の EXP。試行錯誤もこだわりとして少しだけ評価する */
+export const UNDO_EXP = 20;
+export const UNDO_MILESTONE = 25;
+/** 長さの区切り（この長さごとに演出） */
+export const LENGTH_MILESTONE_M = 5;
+/** 画面上の px をおおよその実寸（m）に直す係数（96dpi 換算） */
+export const PX_TO_M = 0.0254 / 96;
 /** 手を止めてから勢いが減り始めるまで */
 export const FLOW_GRACE_MS = 5000;
 /** 減り始めてからの1秒あたりの減少量 */
@@ -90,7 +106,7 @@ export function getNextMultiplier(combo: ComboState, now: number): number {
 
 /** 現在の勢い (0-100) */
 export function getFlowLevel(flow: FlowState, now: number): number {
-  const idleSec = Math.max(0, now - flow.lastStrokeAt - FLOW_GRACE_MS) / 1000;
+  const idleSec = Math.max(0, now - flow.lastActivityAt - FLOW_GRACE_MS) / 1000;
   return Math.max(0, flow.level - FLOW_DECAY_PER_SEC * idleSec);
 }
 
@@ -101,6 +117,14 @@ export function isInZone(flow: FlowState, now: number): boolean {
 /** 描き続けていて BGM を鳴らす状態か */
 export function isFlowBgmActive(flow: FlowState, now: number): boolean {
   return getFlowLevel(flow, now) > 0 && flow.sessionStrokes >= FLOW_BGM_STROKES;
+}
+
+/** 線の長さ（px）を「12cm」「3.4m」のような表示にする */
+export function formatLength(px: number): string {
+  const m = px * PX_TO_M;
+  if (m < 1) return `${Math.round(m * 100)}cm`;
+  if (m < 1000) return `${m.toFixed(1)}m`;
+  return `${(m / 1000).toFixed(2)}km`;
 }
 
 export function getProgressPercent(progress: UserProgress): number {
@@ -117,13 +141,16 @@ const initialProgress: UserProgress = {
   completedPages: 0,
   deadline: "",
   totalStrokes: 0,
+  totalStrokeLength: 0,
+  totalUndos: 0,
 };
 
 const initialFlow: FlowState = {
   level: 0,
-  lastStrokeAt: 0,
+  lastActivityAt: 0,
   rush: 0,
   sessionStrokes: 0,
+  sessionLengthPx: 0,
   inZone: false,
 };
 
@@ -134,7 +161,18 @@ const initialCombo: ComboState = {
   lastActionTime: 0,
 };
 
-interface AppState {
+const initialSettings: AppSettings = {
+  isBgmOn: true,
+  isBridgeEnabled: false,
+  isStrokeSoundOn: true,
+  bgmNormalId: DEFAULT_BGM_NORMAL,
+  bgmFeverId: DEFAULT_BGM_FEVER,
+  voiceMode: "female",
+  femaleVoiceUri: "",
+  maleVoiceUri: "",
+};
+
+interface AppState extends AppSettings {
   progress: UserProgress;
   combo: ComboState;
   /** 直近の進捗アクション結果。EffectOverlay がこれを監視して演出する */
@@ -143,22 +181,21 @@ interface AppState {
   flow: FlowState;
   /** 直近の線の結果。線の演出がこれを監視する */
   lastStroke: StrokeResult | null;
-  /** BGM を鳴らしてよいか（ON でも連続タップ中・描き続けている間のみ鳴る） */
-  isBgmOn: boolean;
-  /** クリスタ連携ブリッジに接続するか */
-  isBridgeEnabled: boolean;
-  /** 線を引くたびの効果音 */
-  isStrokeSoundOn: boolean;
+  /** 直近のやり直しの結果 */
+  lastUndo: UndoResult | null;
 
   recordProgress: (type: ProgressActionType, now?: number) => ProgressActionResult;
   /** クリスタで線を1本引いた */
   recordStroke: (stroke: { durationMs: number; lengthPx: number }, now?: number) => StrokeResult;
+  /** クリスタでやり直し（Ctrl+Z）した */
+  recordUndo: (now?: number) => UndoResult;
   /** コンボ受付時間切れならコンボ・フィーバーを解除する（タイマー等から定期的に呼ぶ） */
   expireCombo: (now?: number) => void;
   setGoal: (goal: { targetPages?: number; deadline?: string }) => void;
   setBgmOn: (on: boolean) => void;
   setBridgeEnabled: (on: boolean) => void;
   setStrokeSoundOn: (on: boolean) => void;
+  updateSettings: (patch: Partial<AppSettings>) => void;
   resetProgress: () => void;
 }
 
@@ -170,9 +207,8 @@ export const useAppStore = create<AppState>()(
       lastAction: null,
       flow: initialFlow,
       lastStroke: null,
-      isBgmOn: true,
-      isBridgeEnabled: false,
-      isStrokeSoundOn: true,
+      lastUndo: null,
+      ...initialSettings,
 
       recordProgress: (type, now = clockNow()) => {
         const { progress, combo } = get();
@@ -222,17 +258,24 @@ export const useAppStore = create<AppState>()(
       recordStroke: ({ durationMs, lengthPx }, now = clockNow()) => {
         const { progress, combo, flow, lastStroke } = get();
 
+        const length = Math.min(Math.max(0, lengthPx), STROKE_MAX_LENGTH_PX);
         const level = getFlowLevel(flow, now);
         const wasInZone = isInZone(flow, now);
-        const newLevel = Math.min(100, level + FLOW_GAIN);
+        const gain = FLOW_GAIN_BASE + Math.min(FLOW_GAIN_LENGTH_MAX, length * FLOW_GAIN_PER_PX);
+        const newLevel = Math.min(100, level + gain);
         const inZone = wasInZone || newLevel >= 100;
-        const rush = flow.lastStrokeAt > 0 && now - flow.lastStrokeAt <= RUSH_GAP_MS ? flow.rush + 1 : 1;
-        const sessionStrokes = (level > 0 ? flow.sessionStrokes : 0) + 1;
+        const rush = flow.lastActivityAt > 0 && now - flow.lastActivityAt <= RUSH_GAP_MS ? flow.rush + 1 : 1;
+        const sessionContinues = level > 0;
+        const sessionStrokes = (sessionContinues ? flow.sessionStrokes : 0) + 1;
+        const prevSessionLength = sessionContinues ? flow.sessionLengthPx : 0;
+        const sessionLengthPx = prevSessionLength + lengthPx;
+        const prevMeters = Math.floor((prevSessionLength * PX_TO_M) / LENGTH_MILESTONE_M);
+        const meters = Math.floor((sessionLengthPx * PX_TO_M) / LENGTH_MILESTONE_M);
 
         // ゾーンの倍率とボタン/保存のコンボ倍率のうち、高い方をかける
         const comboMultiplier = isComboAlive(combo.lastActionTime, now) ? combo.feverMultiplier : 1;
         const multiplier = Math.max(inZone ? ZONE_MULTIPLIER : 1, comboMultiplier);
-        const expGained = Math.round(STROKE_EXP * multiplier);
+        const expGained = Math.round((STROKE_BASE_EXP + length * STROKE_EXP_PER_PX) * multiplier);
         const coinsGained = Math.round(STROKE_COINS * multiplier);
         const today = toDateString(new Date(now));
 
@@ -246,6 +289,7 @@ export const useAppStore = create<AppState>()(
           inZone,
           enteredZone: inZone && !wasInZone,
           milestone: sessionStrokes % STROKE_MILESTONE === 0,
+          lengthMilestoneM: meters > prevMeters ? meters * LENGTH_MILESTONE_M : null,
           durationMs,
           lengthPx,
         };
@@ -256,11 +300,42 @@ export const useAppStore = create<AppState>()(
             totalExp: progress.totalExp + expGained,
             coins: progress.coins + coinsGained,
             totalStrokes: progress.totalStrokes + 1,
+            totalStrokeLength: progress.totalStrokeLength + lengthPx,
             currentStreak: getNextStreak(progress, today),
             lastActiveDate: today,
           },
-          flow: { level: newLevel, lastStrokeAt: now, rush, sessionStrokes, inZone },
+          flow: { level: newLevel, lastActivityAt: now, rush, sessionStrokes, sessionLengthPx, inZone },
           lastStroke: result,
+        });
+
+        return result;
+      },
+
+      recordUndo: (now = clockNow()) => {
+        const { progress, flow, lastUndo } = get();
+        const totalUndos = progress.totalUndos + 1;
+        const today = toDateString(new Date(now));
+        const result: UndoResult = {
+          id: (lastUndo?.id ?? 0) + 1,
+          expGained: UNDO_EXP,
+          totalUndos,
+          milestone: totalUndos % UNDO_MILESTONE === 0,
+        };
+
+        set({
+          progress: {
+            ...progress,
+            totalExp: progress.totalExp + UNDO_EXP,
+            totalUndos,
+            currentStreak: getNextStreak(progress, today),
+            lastActiveDate: today,
+          },
+          // 直している間も手は動いているので、勢いは減らさない（増やしもしない）
+          flow:
+            flow.lastActivityAt > 0
+              ? { ...flow, level: getFlowLevel(flow, now), inZone: isInZone(flow, now), lastActivityAt: now }
+              : flow,
+          lastUndo: result,
         });
 
         return result;
@@ -285,6 +360,7 @@ export const useAppStore = create<AppState>()(
       setBgmOn: (on) => set({ isBgmOn: on }),
       setBridgeEnabled: (on) => set({ isBridgeEnabled: on }),
       setStrokeSoundOn: (on) => set({ isStrokeSoundOn: on }),
+      updateSettings: (patch) => set(patch),
 
       resetProgress: () =>
         set({
@@ -293,27 +369,33 @@ export const useAppStore = create<AppState>()(
           lastAction: null,
           flow: initialFlow,
           lastStroke: null,
+          lastUndo: null,
         }),
     }),
     {
       name: "syuraba-booster",
       storage: createJSONStorage(() => localStorage),
-      version: 2,
+      version: 3,
       migrate: (persisted, version) => {
         const state = { ...(persisted as Partial<AppState>) };
         // v0 では BGM が手動 ON 方式で初期値 OFF だったため、自動再生方式に合わせて ON にする
         if (version < 1) state.isBgmOn = true;
-        // v2 で累計の線の本数を追加
-        if (version < 2 && state.progress) state.progress = { ...state.progress, totalStrokes: 0 };
+        // 後から増えた進捗の項目（線の本数・長さ・やり直し回数）を 0 で補う
+        if (state.progress) state.progress = { ...initialProgress, ...state.progress };
         return state;
       },
       // 演出トリガーと勢いは再読込時に引き継がない
-      partialize: ({ progress, combo, isBgmOn, isBridgeEnabled, isStrokeSoundOn }) => ({
-        progress,
-        combo,
-        isBgmOn,
-        isBridgeEnabled,
-        isStrokeSoundOn,
+      partialize: (state) => ({
+        progress: state.progress,
+        combo: state.combo,
+        isBgmOn: state.isBgmOn,
+        isBridgeEnabled: state.isBridgeEnabled,
+        isStrokeSoundOn: state.isStrokeSoundOn,
+        bgmNormalId: state.bgmNormalId,
+        bgmFeverId: state.bgmFeverId,
+        voiceMode: state.voiceMode,
+        femaleVoiceUri: state.femaleVoiceUri,
+        maleVoiceUri: state.maleVoiceUri,
       }),
     },
   ),

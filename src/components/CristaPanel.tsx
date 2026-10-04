@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   RUSH_GAP_MS,
   ZONE_EXIT_LEVEL,
+  formatLength,
   getFlowLevel,
   isInZone,
   useAppStore,
@@ -23,10 +24,20 @@ interface InkLine {
   reach: number;
   width: number;
   color: string;
+  lengthPx: number;
   bornAt: number;
+  /** やり直しで巻き戻し中なら、その開始時刻 */
+  removedAt?: number;
+}
+
+interface Popup {
+  key: string;
+  text: string;
+  tone: "normal" | "zone" | "undo";
 }
 
 const GROW_MS = 220;
+const RETRACT_MS = 260;
 const MAX_LINES = 400;
 
 function lineFromStroke(stroke: StrokeResult, bornAt: number): InkLine {
@@ -36,6 +47,7 @@ function lineFromStroke(stroke: StrokeResult, bornAt: number): InkLine {
     reach: Math.min(0.9, Math.max(0.18, reach)),
     width: 2 + Math.min(7, stroke.durationMs / 120),
     color: stroke.inZone ? (Math.random() < 0.5 ? "#f59e0b" : "#d946ef") : "#111111",
+    lengthPx: stroke.lengthPx,
     bornAt,
   };
 }
@@ -56,8 +68,12 @@ function drawLines(canvas: HTMLCanvasElement, lines: InkLine[], now: number): bo
   ctx.clearRect(0, 0, w, h);
 
   for (const line of lines) {
-    const raw = Math.min(1, (now - line.bornAt) / GROW_MS);
-    if (raw < 1) animating = true;
+    const grow = Math.min(1, (now - line.bornAt) / GROW_MS);
+    // やり直された線は、引いたときと逆向きにシュッと縮んで消える
+    const retract = line.removedAt === undefined ? 0 : Math.min(1, (now - line.removedAt) / RETRACT_MS);
+    const raw = grow * (1 - retract);
+    const highlighted = grow < 1 || line.removedAt !== undefined;
+    if (highlighted) animating = true;
     const p = 1 - Math.pow(1 - raw, 3); // easeOutCubic: シュッと伸びて止まる
     const inner = line.reach * half;
     const tip = outer - (outer - inner) * p;
@@ -73,8 +89,8 @@ function drawLines(canvas: HTMLCanvasElement, lines: InkLine[], now: number): bo
     ctx.lineTo(cx + cos * tip, cy + sin * tip);
     ctx.closePath();
     ctx.fillStyle = line.color;
-    if (raw < 1) {
-      ctx.shadowColor = "#e879f9";
+    if (highlighted) {
+      ctx.shadowColor = line.removedAt === undefined ? "#e879f9" : "#22d3ee";
       ctx.shadowBlur = 12;
     } else {
       ctx.shadowBlur = 0;
@@ -90,8 +106,10 @@ function LiveInk() {
   const linesRef = useRef<InkLine[]>([]);
   const frameRef = useRef<number | null>(null);
   const [lineCount, setLineCount] = useState(0);
+  const [panelLength, setPanelLength] = useState(0);
+  const [panelUndos, setPanelUndos] = useState(0);
   const [completedPanels, setCompletedPanels] = useState(0);
-  const [lastPopup, setLastPopup] = useState<StrokeResult | null>(null);
+  const [popup, setPopup] = useState<Popup | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -99,7 +117,12 @@ function LiveInk() {
 
     const render = () => {
       frameRef.current = null;
-      if (drawLines(canvas, linesRef.current, performance.now())) {
+      const t = performance.now();
+      // 巻き戻しが終わった線を取り除く
+      linesRef.current = linesRef.current.filter(
+        (line) => line.removedAt === undefined || t - line.removedAt < RETRACT_MS,
+      );
+      if (drawLines(canvas, linesRef.current, t)) {
         frameRef.current = requestAnimationFrame(render);
       }
     };
@@ -117,30 +140,47 @@ function LiveInk() {
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
 
+    const resetPanel = () => {
+      linesRef.current = [];
+      setLineCount(0);
+      setPanelLength(0);
+      setPanelUndos(0);
+      requestRender();
+    };
+
     let clearTimer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = useAppStore.subscribe((state, prev) => {
-      if (state.lastStroke && state.lastStroke !== prev.lastStroke) {
-        const lines = [...linesRef.current, lineFromStroke(state.lastStroke, performance.now())];
+      const stroke = state.lastStroke;
+      if (stroke && stroke !== prev.lastStroke) {
+        const lines = [...linesRef.current, lineFromStroke(stroke, performance.now())];
         linesRef.current = lines.slice(-MAX_LINES);
         setLineCount((n) => n + 1);
-        setLastPopup(state.lastStroke);
+        setPanelLength((len) => len + stroke.lengthPx);
+        setPopup({ key: `s${stroke.id}`, text: `+${stroke.expGained}`, tone: stroke.inZone ? "zone" : "normal" });
+        requestRender();
+      }
+      const undo = state.lastUndo;
+      if (undo && undo !== prev.lastUndo) {
+        // 最後に引いた線を巻き戻す
+        const target = linesRef.current.findLast((line) => line.removedAt === undefined);
+        if (target) {
+          target.removedAt = performance.now();
+          setLineCount((n) => Math.max(0, n - 1));
+          setPanelLength((len) => Math.max(0, len - target.lengthPx));
+        }
+        setPanelUndos((n) => n + 1);
+        setPopup({ key: `u${undo.id}`, text: `↩ こだわり +${undo.expGained}`, tone: "undo" });
         requestRender();
       }
       if (state.lastAction?.type === "save" && state.lastAction !== prev.lastAction) {
         // 保存したらこのコマは完成。演出のあと新しいコマにする
         setCompletedPanels((n) => n + 1);
         clearTimeout(clearTimer);
-        clearTimer = setTimeout(() => {
-          linesRef.current = [];
-          setLineCount(0);
-          requestRender();
-        }, 1200);
+        clearTimer = setTimeout(resetPanel, 1200);
       }
       if (!state.lastStroke && prev.lastStroke) {
-        linesRef.current = [];
-        setLineCount(0);
+        resetPanel();
         setCompletedPanels(0);
-        requestRender();
       }
     });
 
@@ -156,8 +196,15 @@ function LiveInk() {
     <div className="relative aspect-[4/3] w-full overflow-hidden rounded-md border-4 border-black bg-[#fdfdf8] shadow-[0_0_40px_rgba(217,70,239,0.25)]">
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
 
-      <div className="pointer-events-none absolute left-2 top-2 rounded bg-black/80 px-2 py-0.5 text-xs font-bold text-white">
-        このコマ {lineCount}本
+      <div className="pointer-events-none absolute left-2 top-2 flex flex-col items-start gap-1">
+        <span className="rounded bg-black/80 px-2 py-0.5 text-xs font-bold text-white">
+          このコマ {lineCount}本・{formatLength(panelLength)}
+        </span>
+        {panelUndos > 0 && (
+          <span className="rounded bg-cyan-700/90 px-2 py-0.5 text-xs font-bold text-white">
+            やり直し {panelUndos}回
+          </span>
+        )}
       </div>
       {completedPanels > 0 && (
         <div className="pointer-events-none absolute right-2 top-2 rounded bg-fuchsia-600 px-2 py-0.5 text-xs font-bold text-white">
@@ -173,19 +220,19 @@ function LiveInk() {
 
       {/* 線ごとの +EXP */}
       <AnimatePresence>
-        {lastPopup && (
+        {popup && (
           <motion.span
-            key={lastPopup.id}
+            key={popup.key}
             className={cn(
-              "pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 text-2xl font-black drop-shadow-[0_2px_0_rgba(0,0,0,0.6)] [-webkit-text-stroke:1px_#000]",
-              lastPopup.inZone ? "text-amber-300" : "text-white",
+              "pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 whitespace-nowrap text-2xl font-black drop-shadow-[0_2px_0_rgba(0,0,0,0.6)] [-webkit-text-stroke:1px_#000]",
+              popup.tone === "zone" ? "text-amber-300" : popup.tone === "undo" ? "text-cyan-300" : "text-white",
             )}
             initial={{ opacity: 0, y: 0, scale: 0.6 }}
             animate={{ opacity: [0, 1, 1, 0], y: -40, scale: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.08 } }}
             transition={{ duration: 0.8, times: [0, 0.15, 0.6, 1] }}
           >
-            +{lastPopup.expGained}
+            {popup.text}
           </motion.span>
         )}
       </AnimatePresence>
@@ -198,11 +245,11 @@ function LiveInk() {
 function FlowGauge() {
   const now = useNow(200);
   const flow = useAppStore((s) => s.flow);
-  const totalStrokes = useAppStore((s) => s.progress.totalStrokes);
+  const progress = useAppStore((s) => s.progress);
 
   const level = getFlowLevel(flow, now);
   const zone = isInZone(flow, now);
-  const rushAlive = flow.lastStrokeAt > 0 && now - flow.lastStrokeAt <= RUSH_GAP_MS;
+  const rushAlive = flow.lastActivityAt > 0 && now - flow.lastActivityAt <= RUSH_GAP_MS;
 
   return (
     <div className="flex flex-col gap-2">
@@ -221,8 +268,15 @@ function FlowGauge() {
           <span className="text-sm font-black text-zinc-400">RUSH</span>
         </div>
         <div className="text-right text-xs text-zinc-400">
-          {level > 0 && <div>今回 {flow.sessionStrokes}本</div>}
-          <div>累計 {totalStrokes.toLocaleString()}本</div>
+          {level > 0 && (
+            <div>
+              今回 {flow.sessionStrokes}本・{formatLength(flow.sessionLengthPx)}
+            </div>
+          )}
+          <div>
+            累計 {progress.totalStrokes.toLocaleString()}本・{formatLength(progress.totalStrokeLength)}
+          </div>
+          {progress.totalUndos > 0 && <div>やり直し 累計 {progress.totalUndos.toLocaleString()}回</div>}
         </div>
       </div>
 
@@ -339,7 +393,7 @@ export default function CristaPanel() {
         className="flex items-center gap-1.5 self-start text-sm text-zinc-400 hover:text-white"
       >
         {isStrokeSoundOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
-        線の効果音 {isStrokeSoundOn ? "ON" : "OFF"}
+        線・やり直しの効果音 {isStrokeSoundOn ? "ON" : "OFF"}
       </button>
     </section>
   );

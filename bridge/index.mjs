@@ -1,8 +1,8 @@
 // クリスタ連携ブリッジ
-// CLIP STUDIO PAINT が前面にあるときだけ、ペンのストロークと Ctrl+S（保存）を検知して
+// CLIP STUDIO PAINT が前面にあるときだけ、ペンのストロークと Ctrl+S（保存）・Ctrl+Z（やり直し）を検知して
 // ローカルの WebSocket で進捗ブースターに知らせる常駐プログラム。
 //
-// 検知するのは「ペン/マウスの左ボタンを押した・離した・動いた距離」と「Ctrl+S」だけ。
+// 検知するのは「ペン/マウスの左ボタンを押した・離した・動いた距離」と「Ctrl+S」「Ctrl+Z」だけ。
 // 他のキー入力や描いた内容は読み取らず、記録もしない。通信は PC 内（127.0.0.1）だけ。
 //
 // 使い方:
@@ -23,6 +23,8 @@ const MIN_STROKE_MS = 40;
 const MIN_STROKE_PX = 6;
 /** 保存の連打を1回にまとめる */
 const SAVE_COOLDOWN_MS = 5000;
+/** Ctrl+Z の押しっぱなし（キーリピート）は数えすぎないよう間引く */
+const UNDO_MIN_INTERVAL_MS = 120;
 
 const ALLOWED_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
@@ -79,6 +81,17 @@ function emitSave() {
   console.log("💾 保存を検知しました（1コマ完成！）");
 }
 
+let lastUndoAt = 0;
+let undoCount = 0;
+function emitUndo() {
+  const now = Date.now();
+  if (now - lastUndoAt < UNDO_MIN_INTERVAL_MS) return;
+  lastUndoAt = now;
+  undoCount++;
+  broadcast({ type: "undo" });
+  if (undoCount % 25 === 0) console.log(`↩️  やり直し ${undoCount} 回目`);
+}
+
 // ---- 擬似モード ----
 
 if (!SIMULATE && !ANY_APP && process.platform !== "win32") {
@@ -98,13 +111,19 @@ if (!SIMULATE && !ANY_APP && process.platform !== "win32") {
   );
   wss.close();
 } else if (SIMULATE) {
-  console.log("🧪 擬似モード: 数秒おきに線のまとまりを送り、約60秒ごとに保存を送ります");
+  console.log("🧪 擬似モード: 数秒おきに線のまとまりとやり直しを送り、約60秒ごとに保存を送ります");
   const burst = () => {
     const strokes = 3 + Math.floor(Math.random() * 10);
     let t = 0;
     for (let i = 0; i < strokes; i++) {
       t += 150 + Math.random() * 500;
       setTimeout(() => emitStroke(120 + Math.round(Math.random() * 600), 40 + Math.round(Math.random() * 400)), t);
+    }
+    // ときどき描き直す
+    if (Math.random() < 0.4) {
+      const undos = 1 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < undos; i++) setTimeout(emitUndo, t + 400 + i * 250);
+      t += 400 + undos * 250;
     }
     setTimeout(burst, t + 1000 + Math.random() * 4000);
   };
@@ -163,14 +182,17 @@ async function startHooks() {
   });
 
   uIOhook.on("keydown", (e) => {
-    if (e.keycode === UiohookKey.S && e.ctrlKey && isTargetForeground()) emitSave();
+    if (!e.ctrlKey || !isTargetForeground()) return;
+    if (e.keycode === UiohookKey.S) emitSave();
+    // Ctrl+Shift+Z（やり直しの取り消し）は数えない
+    else if (e.keycode === UiohookKey.Z && !e.shiftKey) emitUndo();
   });
 
   uIOhook.start();
   console.log(
     ANY_APP
       ? "👀 すべてのアプリでペン操作を検知中（--any-app）"
-      : "👀 クリスタが前面にあるときのペン操作と Ctrl+S を検知中",
+      : "👀 クリスタが前面にあるときのペン操作と Ctrl+S・Ctrl+Z を検知中",
   );
 
   const stop = () => {

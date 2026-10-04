@@ -10,7 +10,8 @@ export type BridgeMode = "crista" | "any-app" | "simulate";
 export type BridgeEvent =
   | { type: "hello"; mode: BridgeMode }
   | { type: "stroke"; durationMs: number; lengthPx: number }
-  | { type: "save" };
+  | { type: "save" }
+  | { type: "undo" };
 
 export type BridgeStatus = "off" | "connecting" | "connected";
 
@@ -20,6 +21,9 @@ export function handleBridgeEvent(event: BridgeEvent): void {
   if (event.type === "stroke") {
     const result = store.recordStroke({ durationMs: event.durationMs, lengthPx: event.lengthPx });
     if (store.isStrokeSoundOn) soundManager.playStroke(result.rush);
+  } else if (event.type === "undo") {
+    store.recordUndo();
+    if (store.isStrokeSoundOn) soundManager.play("undo");
   } else if (event.type === "save") {
     // 保存 = 1コマ完成（演出は EffectOverlay が lastAction を見て出す）
     store.recordProgress("save");
@@ -32,7 +36,7 @@ function isBridgeEvent(value: unknown): value is BridgeEvent {
   if (event.type === "stroke") {
     return typeof event.durationMs === "number" && typeof event.lengthPx === "number";
   }
-  return event.type === "save" || event.type === "hello";
+  return event.type === "save" || event.type === "undo" || event.type === "hello";
 }
 
 const RETRY_MIN_MS = 2000;

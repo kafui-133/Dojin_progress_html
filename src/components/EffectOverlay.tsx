@@ -3,9 +3,11 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { ACTIONS } from "@/lib/actions";
+import { useCustomTracks } from "@/lib/customTracks";
 import { useNow } from "@/lib/clock";
 import { burstConfetti, celebrateGoal, vibrate } from "@/lib/effects";
 import { soundManager } from "@/lib/soundManager";
+import { speak } from "@/lib/voice";
 import {
   BGM_START_COMBO,
   ZONE_MULTIPLIER,
@@ -13,7 +15,7 @@ import {
   isInZone,
   useAppStore,
 } from "@/store/useAppStore";
-import type { ProgressActionResult, StrokeResult } from "@/types";
+import type { ProgressActionResult, StrokeResult, UndoResult } from "@/types";
 
 /** 演出全体の長さ（PRD 5.4: 1.5秒） */
 const EFFECT_MS = 1500;
@@ -23,6 +25,8 @@ const CUT_IN_AT_S = 0.8;
 const GOAL_EFFECT_MS = 3000;
 /** 線の区切り（50本ごと）の演出は作画の邪魔にならないよう短く */
 const MILESTONE_EFFECT_MS = 1200;
+/** 小さい演出はカットインを早めに出す */
+const LIGHT_CUT_IN_AT_S = 0.4;
 
 interface OverlayEffect {
   key: string;
@@ -82,13 +86,38 @@ function fromStroke(stroke: StrokeResult): OverlayEffect | null {
       durationMs: MILESTONE_EFFECT_MS,
     };
   }
+  if (stroke.lengthMilestoneM !== null) {
+    return {
+      key: `length-${stroke.id}`,
+      headline: `${stroke.lengthMilestoneM}m！`,
+      cutIn: `${stroke.lengthMilestoneM}m描いた！`,
+      impact: false,
+      fever: stroke.inZone,
+      goal: false,
+      durationMs: MILESTONE_EFFECT_MS,
+    };
+  }
   return null;
+}
+
+function fromUndo(undo: UndoResult): OverlayEffect | null {
+  if (!undo.milestone) return null;
+  return {
+    key: `undo-${undo.id}`,
+    headline: `こだわり${undo.totalUndos}回！`,
+    cutIn: "こだわりの鬼！",
+    impact: false,
+    fever: false,
+    goal: false,
+    durationMs: MILESTONE_EFFECT_MS,
+  };
 }
 
 /**
  * パチンコ風演出（PRD 5.4）。
  * 0.0-0.2s フラッシュ + SE + バイブ / 0.2-0.8s 数字スプラッシュ + 紙吹雪 / 0.8-1.5s カットイン。
- * 進捗ボタン・クリスタの保存（lastAction）、ゾーン突入・50本ごとの区切り（lastStroke）で発動する。
+ * 進捗ボタン・クリスタの保存（lastAction）、ゾーン突入・本数や長さの区切り（lastStroke）、
+ * やり直しの区切り（lastUndo）で発動し、カットインの文字を声で読み上げる。
  * あわせて BGM も制御する: 連続タップ（2コンボ）か描き続けている間は通常曲、
  * フィーバー・ゾーン中はフィーバー曲、手が止まったらフェードアウト。ヘッダーの BGM OFF で常に無音。
  */
@@ -99,6 +128,8 @@ export default function EffectOverlay() {
   const isComboBgm = useAppStore((s) => s.combo.comboCount >= BGM_START_COMBO);
   const flow = useAppStore((s) => s.flow);
   const isBgmOn = useAppStore((s) => s.isBgmOn);
+  const bgmNormalId = useAppStore((s) => s.bgmNormalId);
+  const bgmFeverId = useAppStore((s) => s.bgmFeverId);
   const [effect, setEffect] = useState<OverlayEffect | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -106,7 +137,9 @@ export default function EffectOverlay() {
   const isFlowBgm = isFlowBgmActive(flow, now);
 
   useEffect(() => {
-    soundManager.preload();
+    const initial = useAppStore.getState();
+    soundManager.preload([initial.bgmNormalId, initial.bgmFeverId]);
+    void useCustomTracks.getState().load();
     let activeUntil = 0;
 
     const clearTimers = () => {
@@ -128,6 +161,14 @@ export default function EffectOverlay() {
       timers.current.push(
         setTimeout(() => burstConfetti({ fever: next.fever }), CONFETTI_AT_MS),
         setTimeout(() => setEffect(null), next.durationMs),
+        // カットインが出るタイミングで読み上げる
+        setTimeout(
+          () => {
+            const { voiceMode, femaleVoiceUri, maleVoiceUri } = useAppStore.getState();
+            speak(next.cutIn, { mode: voiceMode, femaleVoiceUri, maleVoiceUri });
+          },
+          (next.impact ? CUT_IN_AT_S : LIGHT_CUT_IN_AT_S) * 1000,
+        ),
       );
       if (next.goal) {
         timers.current.push(
@@ -142,8 +183,13 @@ export default function EffectOverlay() {
     const unsubscribe = useAppStore.subscribe((state, prev) => {
       if (state.lastAction && state.lastAction !== prev.lastAction) {
         play(fromAction(state.lastAction));
-      } else if (state.lastStroke && state.lastStroke !== prev.lastStroke) {
-        const next = fromStroke(state.lastStroke);
+      } else {
+        const next =
+          state.lastStroke && state.lastStroke !== prev.lastStroke
+            ? fromStroke(state.lastStroke)
+            : state.lastUndo && state.lastUndo !== prev.lastUndo
+              ? fromUndo(state.lastUndo)
+              : null;
         // 区切りの演出は、進行中の大きな演出を打ち消さない
         if (next && (next.impact || Date.now() >= activeUntil)) play(next);
       }
@@ -157,8 +203,8 @@ export default function EffectOverlay() {
 
   useEffect(() => {
     const active = isBgmOn && (isComboBgm || isFlowBgm);
-    soundManager.setBgm(active ? (isFever || inZone ? "fever" : "normal") : null);
-  }, [isBgmOn, isComboBgm, isFlowBgm, isFever, inZone]);
+    soundManager.setBgm(active ? (isFever || inZone ? bgmFeverId : bgmNormalId) : null);
+  }, [isBgmOn, isComboBgm, isFlowBgm, isFever, inZone, bgmNormalId, bgmFeverId]);
 
   const glow = isFever
     ? "shadow-[inset_0_0_80px_20px_rgba(255,210,63,0.45)]"
@@ -236,7 +282,7 @@ export default function EffectOverlay() {
               initial={{ x: reduceMotion ? 0 : "-110%", opacity: reduceMotion ? 0 : 1 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{
-                delay: effect.impact ? CUT_IN_AT_S : 0.4,
+                delay: effect.impact ? CUT_IN_AT_S : LIGHT_CUT_IN_AT_S,
                 type: "spring",
                 stiffness: 420,
                 damping: 30,
