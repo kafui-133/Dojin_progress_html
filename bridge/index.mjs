@@ -81,7 +81,23 @@ function emitSave() {
 
 // ---- 擬似モード ----
 
-if (SIMULATE) {
+if (!SIMULATE && !ANY_APP && process.platform !== "win32") {
+  // Codespaces などクラウド上では、手元の PC のペン操作は届かない
+  console.log(
+    [
+      "",
+      "⚠️  クリスタ連携ブリッジは、クリスタを使っている Windows PC の上で起動する必要があります。",
+      process.env.CODESPACES === "true"
+        ? "   いまは GitHub Codespaces（クラウド上の Linux）で動いているため、手元の PC のペン操作を検知できません。"
+        : `   いまの環境（${process.platform}）では、クリスタの操作を検知できません。`,
+      "   手元の Windows PC でプロジェクトを開き、npm run dev:crista を実行してください（手順: bridge/README.md）。",
+      "   クリスタなしで動きだけ試すなら npm run bridge:sim を使えます。",
+      "   アプリ（http://localhost:3000）はこのまま使えます。",
+      "",
+    ].join("\n"),
+  );
+  wss.close();
+} else if (SIMULATE) {
   console.log("🧪 擬似モード: 数秒おきに線のまとまりを送り、約60秒ごとに保存を送ります");
   const burst = () => {
     const strokes = 3 + Math.floor(Math.random() * 10);
@@ -117,7 +133,8 @@ async function startHooks() {
   } catch (err) {
     console.error("❌ 入力検知モジュール（uiohook-napi）を読み込めませんでした。npm install をやり直してください。");
     console.error("   ", err.message);
-    process.exit(1);
+    wss.close();
+    return;
   }
   const { uIOhook, UiohookKey, EventType } = uiohook;
 
