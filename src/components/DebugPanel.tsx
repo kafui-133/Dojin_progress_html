@@ -1,7 +1,8 @@
 "use client";
 
 // 仮UI: Step 4 で正式なコンポーネント群に置き換える前提の動作確認用パネル
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import {
   COMBO_WINDOW_MS,
   getEffectiveStreak,
@@ -9,18 +10,12 @@ import {
   toDateString,
   useAppStore,
 } from "@/store/useAppStore";
+import { soundManager } from "@/lib/soundManager";
+import { useIsClient } from "@/lib/useIsClient";
 import { cn } from "@/lib/utils";
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
-
-function useIsClient() {
-  return useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
-}
 
 function daysUntil(deadline: string, today: string): number | null {
   if (!deadline) return null;
@@ -42,8 +37,17 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function DebugPanel() {
   const isClient = useIsClient();
-  const { progress, combo, lastAction, recordProgress, expireCombo, setGoal, resetProgress } =
-    useAppStore();
+  const {
+    progress,
+    combo,
+    lastAction,
+    isBgmOn,
+    recordProgress,
+    expireCombo,
+    setGoal,
+    setBgmOn,
+    resetProgress,
+  } = useAppStore();
 
   // デバッグ用の時間オフセット（コンボ受付時間や連続日数を待たずに試すため）
   const [timeOffset, setTimeOffset] = useState(0);
@@ -86,6 +90,15 @@ export default function DebugPanel() {
           {combo.isFever ? `FEVER ${combo.feverMultiplier.toFixed(1)}x` : `${combo.feverMultiplier.toFixed(1)}x`}
         </span>
         <span className="ml-auto text-lg font-bold tabular-nums">🪙 {progress.coins.toLocaleString()}</span>
+        <button
+          onClick={() => setBgmOn(!isBgmOn)}
+          className={cn(
+            "rounded-full px-3 py-1 text-sm font-bold",
+            isBgmOn ? "bg-fuchsia-600" : "bg-zinc-700 text-zinc-300",
+          )}
+        >
+          BGM {isBgmOn ? "ON" : "OFF"}
+        </button>
       </header>
 
       <section className="flex flex-col gap-2">
@@ -96,9 +109,12 @@ export default function DebugPanel() {
           <span>{remainingDays === null ? "締め切り未設定" : `あと ${remainingDays}日`}</span>
         </div>
         <div className="h-4 overflow-hidden rounded-full bg-zinc-800">
-          <div
-            className="h-full bg-gradient-to-r from-pink-500 to-yellow-400 transition-[width] duration-500"
-            style={{ width: `${percent}%` }}
+          {/* 演出のカットインに合わせて「ズズズ…ドカン！」と伸びる */}
+          <motion.div
+            className="h-full bg-gradient-to-r from-pink-500 to-yellow-400"
+            initial={false}
+            animate={{ width: `${percent}%` }}
+            transition={{ delay: 0.8, duration: 0.7, ease: [0.8, 0, 0.2, 1.3] }}
           />
         </div>
       </section>
@@ -112,13 +128,19 @@ export default function DebugPanel() {
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
-          onClick={() => recordProgress("panel", now)}
+          onClick={() => {
+            soundManager.play("click");
+            recordProgress("panel", now);
+          }}
           className="rounded-xl bg-red-600 px-4 py-5 text-lg font-black shadow-lg transition active:scale-95 hover:bg-red-500"
         >
           🔥 1コマ描いた！
         </button>
         <button
-          onClick={() => recordProgress("text", now)}
+          onClick={() => {
+            soundManager.play("click");
+            recordProgress("text", now);
+          }}
           className="rounded-xl bg-blue-600 px-4 py-5 text-lg font-black shadow-lg transition active:scale-95 hover:bg-blue-500"
         >
           ✍️ 500文字書いた！
