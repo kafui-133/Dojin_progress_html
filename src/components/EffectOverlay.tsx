@@ -2,11 +2,11 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
+import { ACTIONS } from "@/lib/actions";
 import { burstConfetti, celebrateGoal, vibrate } from "@/lib/effects";
 import { soundManager } from "@/lib/soundManager";
-import { useIsClient } from "@/lib/useIsClient";
-import { useAppStore } from "@/store/useAppStore";
-import type { ProgressActionResult, ProgressActionType } from "@/types";
+import { BGM_START_COMBO, useAppStore } from "@/store/useAppStore";
+import type { ProgressActionResult } from "@/types";
 
 /** 演出全体の長さ（PRD 5.4: 1.5秒） */
 const EFFECT_MS = 1500;
@@ -15,17 +15,12 @@ const CUT_IN_AT_S = 0.8;
 /** 目標達成時はバナーを長めに残す */
 const GOAL_EFFECT_MS = 3000;
 
-const CUT_IN_LINES: Record<ProgressActionType, string[]> = {
-  panel: ["神作画！", "ペン入れ完了！", "作画崩壊回避！"],
-  text: ["修羅場突破！", "筆が乗ってる！", "名文誕生！"],
-};
-
 type ActiveEffect = ProgressActionResult & { id: number };
 
 function cutInLine(effect: ActiveEffect): string {
   if (effect.goalReached) return "入稿完了！！";
   if (effect.enteredFever) return "FEVER突入！！";
-  const lines = CUT_IN_LINES[effect.type];
+  const lines = ACTIONS[effect.type].cutIns;
   return lines[effect.id % lines.length];
 }
 
@@ -33,12 +28,13 @@ function cutInLine(effect: ActiveEffect): string {
  * 進捗ボタン押下時のパチンコ風演出（PRD 5.4）。
  * 0.0-0.2s フラッシュ + SE + バイブ / 0.2-0.8s 数字スプラッシュ + 紙吹雪 / 0.8-1.5s カットイン。
  * ストアの lastAction の更新を合図に発動し、連打されたら最初からやり直す。
- * あわせて BGM の ON/OFF・通常/フィーバー切り替えもここで行う。
+ * あわせて BGM も制御する: 連続タップ（2コンボ）で通常曲、フィーバーでフィーバー曲、
+ * コンボが切れたらフェードアウト。ヘッダーの BGM OFF で常に無音。
  */
 export default function EffectOverlay() {
-  const isClient = useIsClient();
   const reduceMotion = useReducedMotion();
   const isFever = useAppStore((s) => s.combo.isFever);
+  const isComboBgm = useAppStore((s) => s.combo.comboCount >= BGM_START_COMBO);
   const isBgmOn = useAppStore((s) => s.isBgmOn);
   const [effect, setEffect] = useState<ActiveEffect | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -84,10 +80,8 @@ export default function EffectOverlay() {
   }, []);
 
   useEffect(() => {
-    soundManager.setBgm(isBgmOn ? (isFever ? "fever" : "normal") : null);
-  }, [isBgmOn, isFever]);
-
-  if (!isClient) return null;
+    soundManager.setBgm(isBgmOn && isComboBgm ? (isFever ? "fever" : "normal") : null);
+  }, [isBgmOn, isComboBgm, isFever]);
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden" aria-live="polite">

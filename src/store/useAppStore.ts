@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { ACTIONS } from "@/lib/actions";
+import { now as clockNow } from "@/lib/clock";
 import type {
   ComboState,
   ProgressActionResult,
@@ -7,11 +9,8 @@ import type {
   UserProgress,
 } from "@/types";
 
-/** 1アクション（1コマ / 500文字）あたりの基本獲得量 */
-export const BASE_EXP_PER_ACTION = 10_000;
+/** 1アクションあたりの基本獲得コイン（EXP と進むページ数は lib/actions.ts で定義） */
 export const BASE_COINS_PER_ACTION = 100;
-/** 1アクションで進む completedPages の単位数（1コマ・500文字とも1単位） */
-export const PAGES_PER_ACTION = 1;
 
 /** 前回アクションからこの時間以内ならコンボ継続 */
 export const COMBO_WINDOW_MS = 15 * 60 * 1000;
@@ -22,6 +21,8 @@ export const FEVER_TIERS = [
   { minCombo: 3, multiplier: 1.5 },
 ] as const;
 export const FEVER_START_COMBO = 3;
+/** このコンボ数から BGM を自動再生する（連続で押したら鳴る） */
+export const BGM_START_COMBO = 2;
 
 export const DEFAULT_TARGET_PAGES = 24;
 
@@ -62,6 +63,11 @@ export function getEffectiveStreak(progress: UserProgress, today: string): numbe
   return daysBetween(progress.lastActiveDate, today) <= 1 ? progress.currentStreak : 0;
 }
 
+/** 次にボタンを押したときにかかる倍率 */
+export function getNextMultiplier(combo: ComboState, now: number): number {
+  return getFeverMultiplier(isComboAlive(combo.lastActionTime, now) ? combo.comboCount + 1 : 1);
+}
+
 export function getProgressPercent(progress: UserProgress): number {
   if (progress.targetPages <= 0) return 0;
   return Math.min(100, (progress.completedPages / progress.targetPages) * 100);
@@ -89,6 +95,7 @@ interface AppState {
   combo: ComboState;
   /** 直近の進捗アクション結果。EffectOverlay がこれを監視して演出する */
   lastAction: (ProgressActionResult & { id: number }) | null;
+  /** BGM を鳴らしてよいか（ON でも連続タップ中のみ鳴る） */
   isBgmOn: boolean;
 
   recordProgress: (type: ProgressActionType, now?: number) => ProgressActionResult;
@@ -105,18 +112,18 @@ export const useAppStore = create<AppState>()(
       progress: initialProgress,
       combo: initialCombo,
       lastAction: null,
-      isBgmOn: false,
+      isBgmOn: true,
 
-      recordProgress: (type, now = Date.now()) => {
+      recordProgress: (type, now = clockNow()) => {
         const { progress, combo } = get();
 
         const comboCount = isComboAlive(combo.lastActionTime, now) ? combo.comboCount + 1 : 1;
         const feverMultiplier = getFeverMultiplier(comboCount);
         const isFever = comboCount >= FEVER_START_COMBO;
 
-        const expGained = Math.round(BASE_EXP_PER_ACTION * feverMultiplier);
+        const expGained = Math.round(ACTIONS[type].exp * feverMultiplier);
         const coinsGained = Math.round(BASE_COINS_PER_ACTION * feverMultiplier);
-        const completedPages = progress.completedPages + PAGES_PER_ACTION;
+        const completedPages = progress.completedPages + ACTIONS[type].pages;
         const today = toDateString(new Date(now));
         const currentStreak = getNextStreak(progress, today);
 
@@ -152,7 +159,7 @@ export const useAppStore = create<AppState>()(
         return result;
       },
 
-      expireCombo: (now = Date.now()) => {
+      expireCombo: (now = clockNow()) => {
         const { combo } = get();
         if (combo.comboCount > 0 && !isComboAlive(combo.lastActionTime, now)) {
           set({ combo: { ...initialCombo } });
@@ -176,6 +183,12 @@ export const useAppStore = create<AppState>()(
     {
       name: "syuraba-booster",
       storage: createJSONStorage(() => localStorage),
+      version: 1,
+      // v0 では BGM が手動 ON 方式で初期値 OFF だったため、自動再生方式に合わせて ON にする
+      migrate: (persisted, version) => {
+        const state = persisted as Partial<AppState>;
+        return version < 1 ? { ...state, isBgmOn: true } : state;
+      },
       // 演出トリガーは再読込時に再生しない
       partialize: ({ progress, combo, isBgmOn }) => ({ progress, combo, isBgmOn }),
     },

@@ -15,8 +15,8 @@ export interface ComboState {
   lastActionTime: number;   // 最終アクションのタイムスタンプ（ms、未アクションなら0）
 }
 
-/** 進捗ボタンの種類: 1コマ描いた / 500文字書いた */
-export type ProgressActionType = "panel" | "text";
+/** 進捗ボタンの種類: コマ割り / 1コマ描いた / 吹き出し / セリフ / 500文字書いた */
+export type ProgressActionType = "paneling" | "panel" | "balloon" | "dialogue" | "text";
 
 /** 進捗アクション1回分の結果。EffectOverlay などの演出トリガーに使う */
 export interface ProgressActionResult {
