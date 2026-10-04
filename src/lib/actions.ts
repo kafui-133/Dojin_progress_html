@@ -41,6 +41,13 @@ export const ACTIONS: Record<ProgressActionType, ActionDefinition> = {
     pages: 1,
     cutIns: ["名ゼリフ誕生！", "キャラが喋った！", "エモさ限界突破！"],
   },
+  save: {
+    label: "クリスタで保存（1コマ完成）",
+    emoji: "💾",
+    exp: 10_000,
+    pages: 1,
+    cutIns: ["1コマ完成！", "保存よし！", "原稿が進んだ！"],
+  },
   text: {
     label: "500文字書いた！",
     emoji: "✍️",
@@ -50,8 +57,11 @@ export const ACTIONS: Record<ProgressActionType, ActionDefinition> = {
   },
 };
 
+/** ボタンにする進捗アクション（save はクリスタの保存で記録するのでボタンにしない） */
+export type ButtonActionType = Exclude<ProgressActionType, "save">;
+
 /** 漫画向け・小説向けのボタンの並び */
-export const ACTION_GROUPS: { title: string; types: ProgressActionType[] }[] = [
+export const ACTION_GROUPS: { title: string; types: ButtonActionType[] }[] = [
   { title: "漫画", types: ["paneling", "panel", "balloon", "dialogue"] },
   { title: "小説・文章", types: ["text"] },
 ];

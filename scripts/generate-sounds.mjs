@@ -86,6 +86,12 @@ const fanfare = mix(
   offset(note(783.99 / 2, 0.9), 0.42),
 );
 
+// 線を1本引いたとき: 柔らかいプラック音（C4）。再生時に音程を変えて音階にする
+const strokePluck = mix(
+  sweep(0.35, () => 261.63, (p) => 0.7 * triangle(p) + 0.3 * sine(2 * p), (t) => Math.min(1, t * 400) * Math.exp(-t * 11)),
+  sweep(0.12, () => 523.25 * 2, sine, (t) => 0.15 * Math.exp(-t * 40)),
+);
+
 // ---- BGM（ループ素材） ----
 
 const saw = (p) => ((p / (2 * Math.PI)) % 1) * 2 - 1;
@@ -170,6 +176,7 @@ for (const [name, samples] of Object.entries({
   se_click: click,
   se_fever_impact: feverImpact,
   se_fanfare: fanfare,
+  se_stroke: strokePluck,
   bgm_normal: bgmNormal,
   bgm_fever: bgmFever,
 })) {

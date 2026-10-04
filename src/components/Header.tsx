@@ -1,7 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Music, VolumeX } from "lucide-react";
+import { Maximize, Minimize, Music, VolumeX } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNow } from "@/lib/clock";
 import { cn } from "@/lib/utils";
 import { getEffectiveStreak, toDateString, useAppStore } from "@/store/useAppStore";
@@ -15,9 +16,21 @@ export default function Header() {
 
   const streak = getEffectiveStreak(progress, toDateString(new Date(now)));
 
+  // 別モニターで全画面表示するためのボタン
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(document.fullscreenElement !== null);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void document.documentElement.requestFullscreen();
+  };
+
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-zinc-950/85 backdrop-blur">
-      <div className="mx-auto flex max-w-5xl items-center gap-1.5 px-4 py-3 sm:gap-3">
+      <div className="mx-auto flex max-w-[1600px] items-center gap-1.5 px-4 py-3 sm:gap-3">
         <h1 className="mr-auto min-w-0 truncate text-sm font-black tracking-tight sm:text-xl">
           進捗ブースター
           <span className="ml-2 hidden text-xs font-bold text-fuchsia-400 sm:inline">
@@ -62,6 +75,16 @@ export default function Header() {
         >
           {isBgmOn ? <Music className="size-4" /> : <VolumeX className="size-4" />}
           <span className="hidden sm:inline">BGM {isBgmOn ? "ON" : "OFF"}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          aria-label={isFullscreen ? "全画面を終了" : "全画面表示"}
+          title={isFullscreen ? "全画面を終了" : "全画面表示（別モニター用）"}
+          className="hidden shrink-0 rounded-full bg-zinc-800 p-1.5 text-zinc-300 transition hover:bg-zinc-700 hover:text-white sm:block"
+        >
+          {isFullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
         </button>
       </div>
     </header>

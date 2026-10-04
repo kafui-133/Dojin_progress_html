@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect } from "react";
-import { ACTIONS, ACTION_GROUPS } from "@/lib/actions";
+import { ACTIONS, ACTION_GROUPS, type ButtonActionType } from "@/lib/actions";
 import { useNow } from "@/lib/clock";
 import { soundManager } from "@/lib/soundManager";
 import { cn } from "@/lib/utils";
@@ -13,9 +13,8 @@ import {
   getNextMultiplier,
   useAppStore,
 } from "@/store/useAppStore";
-import type { ProgressActionType } from "@/types";
 
-const BUTTON_COLORS: Record<ProgressActionType, string> = {
+const BUTTON_COLORS: Record<ButtonActionType, string> = {
   paneling: "from-violet-600 to-indigo-600",
   panel: "from-red-600 to-orange-500",
   balloon: "from-sky-500 to-cyan-500",

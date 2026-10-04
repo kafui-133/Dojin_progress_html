@@ -3,10 +3,17 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { ACTIONS } from "@/lib/actions";
+import { useNow } from "@/lib/clock";
 import { burstConfetti, celebrateGoal, vibrate } from "@/lib/effects";
 import { soundManager } from "@/lib/soundManager";
-import { BGM_START_COMBO, useAppStore } from "@/store/useAppStore";
-import type { ProgressActionResult } from "@/types";
+import {
+  BGM_START_COMBO,
+  ZONE_MULTIPLIER,
+  isFlowBgmActive,
+  isInZone,
+  useAppStore,
+} from "@/store/useAppStore";
+import type { ProgressActionResult, StrokeResult } from "@/types";
 
 /** 演出全体の長さ（PRD 5.4: 1.5秒） */
 const EFFECT_MS = 1500;
@@ -14,62 +21,131 @@ const CONFETTI_AT_MS = 200;
 const CUT_IN_AT_S = 0.8;
 /** 目標達成時はバナーを長めに残す */
 const GOAL_EFFECT_MS = 3000;
+/** 線の区切り（50本ごと）の演出は作画の邪魔にならないよう短く */
+const MILESTONE_EFFECT_MS = 1200;
 
-type ActiveEffect = ProgressActionResult & { id: number };
+interface OverlayEffect {
+  key: string;
+  headline: string;
+  combo?: number;
+  multiplier?: number;
+  coins?: number;
+  cutIn: string;
+  /** 白フラッシュ・バイブ・重低音 */
+  impact: boolean;
+  fever: boolean;
+  goal: boolean;
+  durationMs: number;
+}
 
-function cutInLine(effect: ActiveEffect): string {
-  if (effect.goalReached) return "入稿完了！！";
-  if (effect.enteredFever) return "FEVER突入！！";
-  const lines = ACTIONS[effect.type].cutIns;
-  return lines[effect.id % lines.length];
+function fromAction(action: ProgressActionResult & { id: number }): OverlayEffect {
+  const lines = ACTIONS[action.type].cutIns;
+  return {
+    key: `action-${action.id}`,
+    headline: `+${action.expGained.toLocaleString()} EXP!`,
+    combo: action.comboCount,
+    multiplier: action.feverMultiplier,
+    coins: action.coinsGained,
+    cutIn: action.goalReached
+      ? "入稿完了！！"
+      : action.enteredFever
+        ? "FEVER突入！！"
+        : lines[action.id % lines.length],
+    impact: true,
+    fever: action.isFever,
+    goal: action.goalReached,
+    durationMs: action.goalReached ? GOAL_EFFECT_MS : EFFECT_MS,
+  };
+}
+
+function fromStroke(stroke: StrokeResult): OverlayEffect | null {
+  if (stroke.enteredZone) {
+    return {
+      key: `zone-${stroke.id}`,
+      headline: "ZONE!!",
+      multiplier: ZONE_MULTIPLIER,
+      cutIn: `ZONE突入！！ 線1本 EXP×${ZONE_MULTIPLIER}`,
+      impact: true,
+      fever: true,
+      goal: false,
+      durationMs: EFFECT_MS,
+    };
+  }
+  if (stroke.milestone) {
+    return {
+      key: `milestone-${stroke.id}`,
+      headline: `${stroke.sessionStrokes}本！`,
+      cutIn: stroke.inZone ? "筆が止まらない！！" : `${stroke.sessionStrokes}本突破！`,
+      impact: false,
+      fever: stroke.inZone,
+      goal: false,
+      durationMs: MILESTONE_EFFECT_MS,
+    };
+  }
+  return null;
 }
 
 /**
- * 進捗ボタン押下時のパチンコ風演出（PRD 5.4）。
+ * パチンコ風演出（PRD 5.4）。
  * 0.0-0.2s フラッシュ + SE + バイブ / 0.2-0.8s 数字スプラッシュ + 紙吹雪 / 0.8-1.5s カットイン。
- * ストアの lastAction の更新を合図に発動し、連打されたら最初からやり直す。
- * あわせて BGM も制御する: 連続タップ（2コンボ）で通常曲、フィーバーでフィーバー曲、
- * コンボが切れたらフェードアウト。ヘッダーの BGM OFF で常に無音。
+ * 進捗ボタン・クリスタの保存（lastAction）、ゾーン突入・50本ごとの区切り（lastStroke）で発動する。
+ * あわせて BGM も制御する: 連続タップ（2コンボ）か描き続けている間は通常曲、
+ * フィーバー・ゾーン中はフィーバー曲、手が止まったらフェードアウト。ヘッダーの BGM OFF で常に無音。
  */
 export default function EffectOverlay() {
   const reduceMotion = useReducedMotion();
+  const now = useNow(500);
   const isFever = useAppStore((s) => s.combo.isFever);
   const isComboBgm = useAppStore((s) => s.combo.comboCount >= BGM_START_COMBO);
+  const flow = useAppStore((s) => s.flow);
   const isBgmOn = useAppStore((s) => s.isBgmOn);
-  const [effect, setEffect] = useState<ActiveEffect | null>(null);
+  const [effect, setEffect] = useState<OverlayEffect | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const inZone = isInZone(flow, now);
+  const isFlowBgm = isFlowBgmActive(flow, now);
 
   useEffect(() => {
     soundManager.preload();
+    let activeUntil = 0;
 
     const clearTimers = () => {
       timers.current.forEach(clearTimeout);
       timers.current = [];
     };
 
-    const unsubscribe = useAppStore.subscribe((state, prev) => {
-      const action = state.lastAction;
-      if (!action || action === prev.lastAction) return;
-
+    const play = (next: OverlayEffect) => {
       clearTimers();
-      setEffect(action);
+      setEffect(next);
+      activeUntil = Date.now() + next.durationMs;
 
-      soundManager.play("feverImpact");
-      vibrate([100, 50, 100]);
+      if (next.impact) {
+        soundManager.play("feverImpact");
+        vibrate([100, 50, 100]);
+      } else {
+        soundManager.play("fanfare");
+      }
       timers.current.push(
-        setTimeout(() => burstConfetti({ fever: action.isFever }), CONFETTI_AT_MS),
-        setTimeout(
-          () => setEffect(null),
-          action.goalReached ? GOAL_EFFECT_MS : EFFECT_MS,
-        ),
+        setTimeout(() => burstConfetti({ fever: next.fever }), CONFETTI_AT_MS),
+        setTimeout(() => setEffect(null), next.durationMs),
       );
-      if (action.goalReached) {
+      if (next.goal) {
         timers.current.push(
           setTimeout(() => {
             soundManager.play("fanfare");
             celebrateGoal();
           }, CUT_IN_AT_S * 1000),
         );
+      }
+    };
+
+    const unsubscribe = useAppStore.subscribe((state, prev) => {
+      if (state.lastAction && state.lastAction !== prev.lastAction) {
+        play(fromAction(state.lastAction));
+      } else if (state.lastStroke && state.lastStroke !== prev.lastStroke) {
+        const next = fromStroke(state.lastStroke);
+        // 区切りの演出は、進行中の大きな演出を打ち消さない
+        if (next && (next.impact || Date.now() >= activeUntil)) play(next);
       }
     });
 
@@ -80,17 +156,24 @@ export default function EffectOverlay() {
   }, []);
 
   useEffect(() => {
-    soundManager.setBgm(isBgmOn && isComboBgm ? (isFever ? "fever" : "normal") : null);
-  }, [isBgmOn, isComboBgm, isFever]);
+    const active = isBgmOn && (isComboBgm || isFlowBgm);
+    soundManager.setBgm(active ? (isFever || inZone ? "fever" : "normal") : null);
+  }, [isBgmOn, isComboBgm, isFlowBgm, isFever, inZone]);
+
+  const glow = isFever
+    ? "shadow-[inset_0_0_80px_20px_rgba(255,210,63,0.45)]"
+    : inZone
+      ? "shadow-[inset_0_0_90px_24px_rgba(217,70,239,0.45)]"
+      : null;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden" aria-live="polite">
-      {/* フィーバー中は画面の縁を光らせ続ける */}
+      {/* フィーバー・ゾーン中は画面の縁を光らせ続ける */}
       <AnimatePresence>
-        {isFever && (
+        {glow && (
           <motion.div
-            key="fever-glow"
-            className="absolute inset-0 shadow-[inset_0_0_80px_20px_rgba(255,210,63,0.45)]"
+            key={glow}
+            className={`absolute inset-0 ${glow}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: reduceMotion ? 0.8 : [0.5, 1, 0.5] }}
             exit={{ opacity: 0 }}
@@ -102,13 +185,13 @@ export default function EffectOverlay() {
       <AnimatePresence>
         {effect && (
           <motion.div
-            key={effect.id}
+            key={effect.key}
             className="absolute inset-0"
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
             {/* 0.0-0.2s: Impact フラッシュ */}
-            {!reduceMotion && (
+            {effect.impact && !reduceMotion && (
               <motion.div
                 className="absolute inset-0 bg-white"
                 initial={{ opacity: 0 }}
@@ -129,7 +212,7 @@ export default function EffectOverlay() {
                 }
                 transition={{ delay: 0.2, duration: 0.6, ease: "easeOut" }}
               >
-                +{effect.expGained.toLocaleString()} EXP!
+                {effect.headline}
               </motion.div>
               <motion.div
                 className="flex items-center gap-3 text-2xl font-black text-white drop-shadow-[0_2px_0_rgba(0,0,0,0.8)]"
@@ -137,13 +220,13 @@ export default function EffectOverlay() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.45, duration: 0.25 }}
               >
-                {effect.comboCount >= 2 && <span>{effect.comboCount} COMBO</span>}
-                {effect.feverMultiplier > 1 && (
+                {effect.combo !== undefined && effect.combo >= 2 && <span>{effect.combo} COMBO</span>}
+                {effect.multiplier !== undefined && effect.multiplier > 1 && (
                   <span className="rounded bg-yellow-400 px-2 text-black">
-                    ×{effect.feverMultiplier.toFixed(1)}
+                    ×{effect.multiplier.toFixed(1)}
                   </span>
                 )}
-                <span className="text-yellow-200">+{effect.coinsGained} 🪙</span>
+                {effect.coins !== undefined && <span className="text-yellow-200">+{effect.coins} 🪙</span>}
               </motion.div>
             </div>
 
@@ -152,10 +235,15 @@ export default function EffectOverlay() {
               className="absolute inset-x-0 top-[62%] flex -skew-y-3 justify-center bg-gradient-to-r from-fuchsia-600 via-red-500 to-yellow-400 py-3 shadow-[0_0_30px_rgba(255,80,160,0.7)]"
               initial={{ x: reduceMotion ? 0 : "-110%", opacity: reduceMotion ? 0 : 1 }}
               animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: CUT_IN_AT_S, type: "spring", stiffness: 420, damping: 30 }}
+              transition={{
+                delay: effect.impact ? CUT_IN_AT_S : 0.4,
+                type: "spring",
+                stiffness: 420,
+                damping: 30,
+              }}
             >
               <span className="font-dot text-4xl text-white drop-shadow-[3px_3px_0_rgba(0,0,0,0.85)] sm:text-6xl">
-                {cutInLine(effect)}
+                {effect.cutIn}
               </span>
             </motion.div>
           </motion.div>

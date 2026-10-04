@@ -1,6 +1,6 @@
 import { Howl, Howler } from "howler";
 
-export type SoundEffect = "click" | "feverImpact" | "fanfare";
+export type SoundEffect = "click" | "feverImpact" | "fanfare" | "stroke";
 export type BgmTrack = "normal" | "fever";
 
 // 先頭から順に試し、読み込めなければ次の候補を使う
@@ -8,6 +8,7 @@ const SE_SOURCES: Record<SoundEffect, string[]> = {
   click: ["/sounds/se_click.wav"],
   feverImpact: ["/sounds/se_fever_impact.wav"],
   fanfare: ["/sounds/se_fanfare.wav"],
+  stroke: ["/sounds/se_stroke.wav"],
 };
 
 // 本番の BGM（Suno 等で作った mp3）を置けばそちらを優先し、無ければ仮の wav を鳴らす
@@ -17,6 +18,11 @@ const BGM_SOURCES: Record<BgmTrack, string[]> = {
 };
 
 const SE_VOLUME = 0.8;
+const STROKE_VOLUME = 0.45;
+/** 線の効果音の音階（メジャーペンタトニック、半音単位） */
+const PENTATONIC = [0, 2, 4, 7, 9];
+/** 2オクターブ上まで上がったら折り返す */
+const STROKE_NOTES = 11;
 const BGM_VOLUME = 0.35;
 const BGM_FADE_MS = 800;
 
@@ -86,6 +92,31 @@ class SoundManager {
 
   play(name: SoundEffect): void {
     this.getSe(name)?.play();
+  }
+
+  /**
+   * 線の効果音。続けて引くほど音階が上がり、2オクターブ上で折り返す。
+   * @param step 何本目の線か（1始まり）
+   */
+  playStroke(step: number): void {
+    const howl = this.getSe("stroke");
+    if (!howl) return;
+    const cycle = STROKE_NOTES * 2 - 2;
+    const i = (step - 1) % cycle;
+    const note = i < STROKE_NOTES ? i : cycle - i;
+    const semitones = 12 * Math.floor(note / PENTATONIC.length) + PENTATONIC[note % PENTATONIC.length];
+    const id = howl.play();
+    howl.rate(Math.pow(2, semitones / 12), id);
+    howl.volume(STROKE_VOLUME, id);
+  }
+
+  /** ブラウザの自動再生制限で音が止められているか */
+  isLocked(): boolean {
+    return Howler.ctx?.state === "suspended";
+  }
+
+  async unlock(): Promise<void> {
+    await Howler.ctx?.resume();
   }
 
   /** BGM を切り替える（クロスフェード）。null で停止 */

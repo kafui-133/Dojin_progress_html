@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "bridge": "node bridge/index.mjs",
+    "bridge:sim": "node bridge/index.mjs --simulate",
+    "dev:crista": "concurrently -k -n app,bridge -c magenta,cyan \"next dev\" \"node bridge/index.mjs\""
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
@@ -18,6 +21,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "tailwind-merge": "^3.7.0",
+    "ws": "^8.22.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
@@ -27,9 +31,14 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^10.0.5",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "optionalDependencies": {
+    "koffi": "^3.3.2",
+    "uiohook-napi": "^1.5.5"
   }
 }

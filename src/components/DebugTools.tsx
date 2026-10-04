@@ -2,9 +2,25 @@
 
 import { Bug } from "lucide-react";
 import { useClockOffset, useNow } from "@/lib/clock";
+import { handleBridgeEvent } from "@/lib/crista";
 import { useAppStore } from "@/store/useAppStore";
 
 const MINUTE = 60_000;
+
+/** 線を n 本、人が描くくらいの間隔で送る */
+function fakeStrokes(n: number) {
+  for (let i = 0; i < n; i++) {
+    setTimeout(
+      () =>
+        handleBridgeEvent({
+          type: "stroke",
+          durationMs: 100 + Math.round(Math.random() * 600),
+          lengthPx: 30 + Math.round(Math.random() * 500),
+        }),
+      i * 180,
+    );
+  }
+}
 
 /** 開発時（npm run dev）だけ表示する動作確認用ツール */
 export default function DebugTools() {
@@ -26,6 +42,18 @@ export default function DebugTools() {
           仮想時刻: {new Date(now).toLocaleString("ja-JP")}
           {offset > 0 && `（+${Math.round(offset / MINUTE)}分）`}
         </p>
+        <div className="flex flex-wrap gap-2">
+          <span className="w-full text-xs">クリスタ連携の擬似イベント</span>
+          <button type="button" onClick={() => fakeStrokes(1)} className="rounded bg-zinc-800 px-3 py-1 hover:bg-zinc-700">
+            ✏️ 線を1本
+          </button>
+          <button type="button" onClick={() => fakeStrokes(10)} className="rounded bg-zinc-800 px-3 py-1 hover:bg-zinc-700">
+            ✏️ 線を10本
+          </button>
+          <button type="button" onClick={() => handleBridgeEvent({ type: "save" })} className="rounded bg-zinc-800 px-3 py-1 hover:bg-zinc-700">
+            💾 保存
+          </button>
+        </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => advance(5 * MINUTE)} className="rounded bg-zinc-800 px-3 py-1 hover:bg-zinc-700">
             +5分
