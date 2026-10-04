@@ -7,7 +7,8 @@ import { useCustomTracks } from "@/lib/customTracks";
 import { useNow } from "@/lib/clock";
 import { burstConfetti, celebrateGoal, vibrate } from "@/lib/effects";
 import { soundManager } from "@/lib/soundManager";
-import { speak } from "@/lib/voice";
+import { speak, voiceOptions } from "@/lib/voice";
+import { LINES, lengthMilestoneLine, strokeMilestoneLine } from "@/lib/voiceLines";
 import {
   BGM_START_COMBO,
   ZONE_MULTIPLIER,
@@ -51,9 +52,9 @@ function fromAction(action: ProgressActionResult & { id: number }): OverlayEffec
     multiplier: action.feverMultiplier,
     coins: action.coinsGained,
     cutIn: action.goalReached
-      ? "入稿完了！！"
+      ? LINES.goal
       : action.enteredFever
-        ? "FEVER突入！！"
+        ? LINES.fever
         : lines[action.id % lines.length],
     impact: true,
     fever: action.isFever,
@@ -68,7 +69,7 @@ function fromStroke(stroke: StrokeResult): OverlayEffect | null {
       key: `zone-${stroke.id}`,
       headline: "ZONE!!",
       multiplier: ZONE_MULTIPLIER,
-      cutIn: `ZONE突入！！ 線1本 EXP×${ZONE_MULTIPLIER}`,
+      cutIn: LINES.zone,
       impact: true,
       fever: true,
       goal: false,
@@ -79,7 +80,7 @@ function fromStroke(stroke: StrokeResult): OverlayEffect | null {
     return {
       key: `milestone-${stroke.id}`,
       headline: `${stroke.sessionStrokes}本！`,
-      cutIn: stroke.inZone ? "筆が止まらない！！" : `${stroke.sessionStrokes}本突破！`,
+      cutIn: stroke.inZone ? LINES.unstoppable : strokeMilestoneLine(stroke.sessionStrokes),
       impact: false,
       fever: stroke.inZone,
       goal: false,
@@ -90,7 +91,7 @@ function fromStroke(stroke: StrokeResult): OverlayEffect | null {
     return {
       key: `length-${stroke.id}`,
       headline: `${stroke.lengthMilestoneM}m！`,
-      cutIn: `${stroke.lengthMilestoneM}m描いた！`,
+      cutIn: lengthMilestoneLine(stroke.lengthMilestoneM),
       impact: false,
       fever: stroke.inZone,
       goal: false,
@@ -105,7 +106,7 @@ function fromUndo(undo: UndoResult): OverlayEffect | null {
   return {
     key: `undo-${undo.id}`,
     headline: `こだわり${undo.totalUndos}回！`,
-    cutIn: "こだわりの鬼！",
+    cutIn: LINES.undoMaster,
     impact: false,
     fever: false,
     goal: false,
@@ -164,8 +165,8 @@ export default function EffectOverlay() {
         // カットインが出るタイミングで読み上げる
         setTimeout(
           () => {
-            const { voiceMode, femaleVoiceUri, maleVoiceUri } = useAppStore.getState();
-            speak(next.cutIn, { mode: voiceMode, femaleVoiceUri, maleVoiceUri });
+            const settings = useAppStore.getState();
+            speak(next.cutIn, voiceOptions(settings));
           },
           (next.impact ? CUT_IN_AT_S : LIGHT_CUT_IN_AT_S) * 1000,
         ),

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { ACTIONS } from "@/lib/actions";
 import { now as clockNow } from "@/lib/clock";
+import { DEFAULT_FEMALE_CHARACTER, DEFAULT_MALE_CHARACTER } from "@/lib/geminiTts";
 import { DEFAULT_BGM_FEVER, DEFAULT_BGM_NORMAL } from "@/lib/soundManager";
 import type {
   AppSettings,
@@ -170,6 +171,9 @@ const initialSettings: AppSettings = {
   voiceMode: "female",
   femaleVoiceUri: "",
   maleVoiceUri: "",
+  ttsEngine: "browser",
+  geminiFemaleCharacter: DEFAULT_FEMALE_CHARACTER,
+  geminiMaleCharacter: DEFAULT_MALE_CHARACTER,
 };
 
 interface AppState extends AppSettings {
@@ -396,6 +400,9 @@ export const useAppStore = create<AppState>()(
         voiceMode: state.voiceMode,
         femaleVoiceUri: state.femaleVoiceUri,
         maleVoiceUri: state.maleVoiceUri,
+        ttsEngine: state.ttsEngine,
+        geminiFemaleCharacter: state.geminiFemaleCharacter,
+        geminiMaleCharacter: state.geminiMaleCharacter,
       }),
     },
   ),

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { STORES, withStore } from "@/lib/db";
 import { DEFAULT_BGM_FEVER, DEFAULT_BGM_NORMAL, soundManager } from "@/lib/soundManager";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -17,36 +18,9 @@ interface StoredTrack extends CustomTrack {
   format: string;
 }
 
-const DB_NAME = "syuraba-booster";
-const STORE = "bgm-tracks";
-export const CUSTOM_TRACK_PREFIX = "custom:";
 /** 1曲あたりの上限（ブラウザの保存容量を圧迫しないように） */
 export const MAX_TRACK_BYTES = 30 * 1024 * 1024;
-
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE, { keyPath: "id" });
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function withStore<T>(
-  mode: IDBTransactionMode,
-  run: (store: IDBObjectStore) => IDBRequest<T>,
-): Promise<T> {
-  const db = await openDb();
-  try {
-    return await new Promise<T>((resolve, reject) => {
-      const request = run(db.transaction(STORE, mode).objectStore(STORE));
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  } finally {
-    db.close();
-  }
-}
+export const CUSTOM_TRACK_PREFIX = "custom:";
 
 /** Howler に渡す形式。拡張子か MIME タイプから判断する */
 function detectFormat(file: File): string {
@@ -88,7 +62,7 @@ export const useCustomTracks = create<{
     if (get().loaded || typeof indexedDB === "undefined") return;
     set({ loaded: true });
     try {
-      const stored = await withStore<StoredTrack[]>("readonly", (s) => s.getAll());
+      const stored = await withStore<StoredTrack[]>(STORES.bgmTracks, "readonly", (s) => s.getAll());
       stored.forEach(register);
       set({ tracks: stored.map(({ id, name }) => ({ id, name })) });
       fixSelection(new Set(stored.map((t) => t.id)));
@@ -107,7 +81,7 @@ export const useCustomTracks = create<{
       blob: file,
       format: detectFormat(file),
     };
-    await withStore("readwrite", (s) => s.put(track));
+    await withStore(STORES.bgmTracks, "readwrite", (s) => s.put(track));
     register(track);
     const added = { id: track.id, name: track.name };
     set((state) => ({ tracks: [...state.tracks, added] }));
@@ -115,7 +89,7 @@ export const useCustomTracks = create<{
   },
 
   remove: async (id) => {
-    await withStore("readwrite", (s) => s.delete(id));
+    await withStore(STORES.bgmTracks, "readwrite", (s) => s.delete(id));
     soundManager.unregisterTrack(id);
     const url = objectUrls.get(id);
     if (url) URL.revokeObjectURL(url);

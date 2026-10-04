@@ -1,10 +1,22 @@
+import { Howl } from "howler";
 import { useSyncExternalStore } from "react";
+import {
+  type VoiceCharacter,
+  cacheKey,
+  generateAndCache,
+  generateInBackground,
+  getCachedVoice,
+  getCharacter,
+  loadApiKey,
+} from "@/lib/geminiTts";
 import { soundManager } from "@/lib/soundManager";
 
 /**
- * カットインの文字の読み上げ（ブラウザ内蔵の音声合成 Web Speech API）。
- * Windows の Edge なら高品質な「Nanami（女性）」「Keita（男性）」、
- * Chrome なら「Google 日本語」や Windows 標準の「Haruka」「Ichiro」などが使える。
+ * カットインの文字の読み上げ。
+ * - ブラウザ標準: 内蔵の音声合成（Web Speech API）。Windows の Edge なら「Nanami」「Keita」、
+ *   Chrome なら「Google 日本語」や Windows 標準の「Haruka」「Ichiro」などが使える。
+ * - Gemini: Google AI Studio の自然な声。作って保存した音声を鳴らし、
+ *   まだ無いセリフはブラウザ標準の声で読みつつ、次回用に裏で作っておく。
  */
 
 export type VoiceMode = "off" | "female" | "male" | "alternate";
@@ -92,16 +104,56 @@ export function pickVoice(gender: VoiceGender, preferredUri = ""): SpeechSynthes
 
 let alternateNext: VoiceGender = "female";
 let current: SpeechSynthesisUtterance | null = null;
+/** 新しい読み上げが始まったら、それより前の（非同期の）読み上げは取りやめる */
+let speakToken = 0;
 
 export interface SpeakOptions {
   mode: VoiceMode;
   femaleVoiceUri?: string;
   maleVoiceUri?: string;
+  engine?: "browser" | "gemini";
+  femaleCharacter?: string;
+  maleCharacter?: string;
   volume?: number;
 }
 
-export function speak(text: string, { mode, femaleVoiceUri, maleVoiceUri, volume = 1 }: SpeakOptions): void {
-  if (mode === "off" || !isSupported()) return;
+// ---- Gemini で作った音声の再生 ----
+
+const voiceHowls = new Map<string, Howl>();
+let playingHowl: Howl | null = null;
+
+function stopAll(): void {
+  // 打ち切った読み上げの終了通知で BGM を戻さないよう、先に忘れる
+  current = null;
+  if (isSupported()) speechSynthesis.cancel();
+  playingHowl?.stop();
+  playingHowl = null;
+}
+
+function playVoiceBlob(character: VoiceCharacter, text: string, blob: Blob, volume: number): void {
+  const key = cacheKey(character, text);
+  let howl = voiceHowls.get(key);
+  if (!howl) {
+    howl = new Howl({ src: [URL.createObjectURL(blob)], format: ["wav"] });
+    voiceHowls.set(key, howl);
+  }
+  const target = howl;
+  playingHowl = target;
+  target.volume(volume);
+  soundManager.duck(true);
+  const restore = () => {
+    if (playingHowl !== target) return;
+    playingHowl = null;
+    soundManager.duck(false);
+  };
+  target.once("end", restore);
+  target.once("stop", restore);
+  target.play();
+}
+
+export function speak(text: string, options: SpeakOptions): void {
+  const { mode, engine = "browser", volume = 1 } = options;
+  if (mode === "off") return;
 
   let gender: VoiceGender;
   if (mode === "alternate") {
@@ -111,8 +163,35 @@ export function speak(text: string, { mode, femaleVoiceUri, maleVoiceUri, volume
     gender = mode;
   }
 
+  const reading = toReading(text);
+  const token = ++speakToken;
+  stopAll();
+
+  if (engine === "gemini") {
+    const character = getCharacter(
+      (gender === "female" ? options.femaleCharacter : options.maleCharacter) ?? "",
+      gender,
+    );
+    void getCachedVoice(character, reading).then((blob) => {
+      if (token !== speakToken) return;
+      if (blob) {
+        playVoiceBlob(character, reading, blob, volume);
+      } else {
+        speakWithBrowser(reading, gender, options);
+        generateInBackground(reading, character);
+      }
+    });
+    return;
+  }
+
+  speakWithBrowser(reading, gender, options);
+}
+
+function speakWithBrowser(reading: string, gender: VoiceGender, options: SpeakOptions): void {
+  if (!isSupported()) return;
+  const { femaleVoiceUri, maleVoiceUri, volume = 1 } = options;
   const voice = pickVoice(gender, gender === "female" ? femaleVoiceUri : maleVoiceUri);
-  const utterance = new SpeechSynthesisUtterance(toReading(text));
+  const utterance = new SpeechSynthesisUtterance(reading);
   utterance.lang = "ja-JP";
   if (voice) utterance.voice = voice;
   utterance.pitch = STYLE[gender].pitch;
@@ -121,7 +200,6 @@ export function speak(text: string, { mode, femaleVoiceUri, maleVoiceUri, volume
 
   // 次の演出が来たら前の読み上げは打ち切る（溜まって遅れないように）
   current = utterance;
-  speechSynthesis.cancel();
   soundManager.duck(true);
   // cancel() で打ち切った前の読み上げの終了通知では BGM を戻さない
   const restore = () => {
@@ -132,4 +210,32 @@ export function speak(text: string, { mode, femaleVoiceUri, maleVoiceUri, volume
   utterance.onend = restore;
   utterance.onerror = restore;
   speechSynthesis.speak(utterance);
+}
+
+/** 保存されている設定から読み上げのオプションを作る */
+export function voiceOptions(settings: {
+  voiceMode: VoiceMode;
+  femaleVoiceUri: string;
+  maleVoiceUri: string;
+  ttsEngine: "browser" | "gemini";
+  geminiFemaleCharacter: string;
+  geminiMaleCharacter: string;
+}): SpeakOptions {
+  return {
+    mode: settings.voiceMode,
+    femaleVoiceUri: settings.femaleVoiceUri,
+    maleVoiceUri: settings.maleVoiceUri,
+    engine: settings.ttsEngine,
+    femaleCharacter: settings.geminiFemaleCharacter,
+    maleCharacter: settings.geminiMaleCharacter,
+  };
+}
+
+/** 設定画面のテスト用。保存がなければその場で作って、Gemini の声で鳴らす */
+export async function previewGeminiCharacter(character: VoiceCharacter, text: string): Promise<void> {
+  const reading = toReading(text);
+  const token = ++speakToken;
+  stopAll();
+  const blob = (await getCachedVoice(character, reading)) ?? (await generateAndCache(reading, character, loadApiKey()));
+  if (token === speakToken) playVoiceBlob(character, reading, blob, 1);
 }

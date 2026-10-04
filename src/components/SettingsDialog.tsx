@@ -1,9 +1,21 @@
 "use client";
 
-import { Play, Plus, Trash2, X } from "lucide-react";
+import { ExternalLink, Loader2, Play, Plus, Sparkles, Square, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCustomTracks } from "@/lib/customTracks";
+import {
+  API_KEY_PAGE,
+  type CharacterGender,
+  GeminiTtsError,
+  type PrepareProgress,
+  VOICE_CHARACTERS,
+  countCachedVoices,
+  getCharacter,
+  loadApiKey,
+  prepareVoices,
+  saveApiKey,
+} from "@/lib/geminiTts";
 import { BGM_PRESETS, soundManager } from "@/lib/soundManager";
 import { cn } from "@/lib/utils";
 import {
@@ -11,9 +23,12 @@ import {
   type VoiceGender,
   type VoiceMode,
   guessGender,
+  previewGeminiCharacter,
   speak,
+  toReading,
   useJapaneseVoices,
 } from "@/lib/voice";
+import { getAllVoiceLines } from "@/lib/voiceLines";
 import { useAppStore } from "@/store/useAppStore";
 
 const VOICE_SAMPLES: Record<VoiceGender, string> = {
@@ -225,11 +240,222 @@ function VoicePicker({ gender }: { gender: VoiceGender }) {
   );
 }
 
+function errorMessage(err: unknown): string {
+  if (err instanceof GeminiTtsError) {
+    if (err.kind === "rate-limit") {
+      return "無料枠の上限に達しました。時間をおいて（日付が変わってから）もう一度「声を準備する」を押すと、続きから再開します。";
+    }
+    if (err.kind === "auth") return `${err.message}。Google AI Studio で発行したキーを貼り付けてください。`;
+    return `生成できませんでした: ${err.message}`;
+  }
+  return `生成できませんでした: ${err instanceof Error ? err.message : String(err)}`;
+}
+
+function CharacterPicker({ gender }: { gender: CharacterGender }) {
+  const key = gender === "female" ? "geminiFemaleCharacter" : "geminiMaleCharacter";
+  const value = useAppStore((s) => s[key]);
+  const updateSettings = useAppStore((s) => s.updateSettings);
+  const [testing, setTesting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const test = async () => {
+    setError(null);
+    setTesting(true);
+    try {
+      await previewGeminiCharacter(getCharacter(value, gender), VOICE_SAMPLES[gender]);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      <span className="text-zinc-300">{gender === "female" ? "女性のキャラクター" : "男性のキャラクター"}</span>
+      <div className="flex gap-2">
+        <select
+          value={getCharacter(value, gender).id}
+          onChange={(e) =>
+            updateSettings(
+              gender === "female" ? { geminiFemaleCharacter: e.target.value } : { geminiMaleCharacter: e.target.value },
+            )
+          }
+          className="min-w-0 flex-1 rounded-lg bg-zinc-800 px-3 py-2"
+        >
+          {VOICE_CHARACTERS.filter((c) => c.gender === gender).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}（{c.voiceName}）
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => void test()}
+          disabled={testing}
+          className="flex shrink-0 items-center gap-1 rounded-lg bg-zinc-700 px-3 font-bold hover:bg-zinc-600 disabled:opacity-60"
+        >
+          {testing ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />} テスト
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+function GeminiVoiceSettings() {
+  const femaleId = useAppStore((s) => s.geminiFemaleCharacter);
+  const maleId = useAppStore((s) => s.geminiMaleCharacter);
+  const voiceMode = useAppStore((s) => s.voiceMode);
+  const [keyInput, setKeyInput] = useState(() => loadApiKey());
+  const [savedKey, setSavedKey] = useState(() => loadApiKey());
+  const [progress, setProgress] = useState<PrepareProgress | null>(null);
+  const [preparedCount, setPreparedCount] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // 使うキャラクター（OFF・女性だけ・男性だけ・交互で変わる）
+  const characters = [
+    ...(voiceMode === "female" || voiceMode === "alternate" ? [getCharacter(femaleId, "female")] : []),
+    ...(voiceMode === "male" || voiceMode === "alternate" ? [getCharacter(maleId, "male")] : []),
+  ];
+  const texts = getAllVoiceLines().map(toReading);
+  const total = texts.length * characters.length;
+  const charactersKey = characters.map((c) => c.id).join(",");
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all(characters.map((c) => countCachedVoices(c, texts))).then((counts) => {
+      if (!cancelled) setPreparedCount(counts.reduce((a, b) => a + b, 0));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // characters と texts は charactersKey が同じなら中身も同じ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [charactersKey, progress === null]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const start = async () => {
+    setError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setProgress({ done: 0, total });
+    try {
+      await prepareVoices(characters, texts, setProgress, controller.signal);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      abortRef.current = null;
+      setProgress(null);
+    }
+  };
+
+  const isRunning = progress !== null;
+  const shown = progress ?? (preparedCount !== null ? { done: preparedCount, total } : null);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg bg-zinc-800/60 p-3 text-sm">
+      <div className="flex flex-col gap-1">
+        <span className="text-zinc-300">Gemini の API キー</span>
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={keyInput}
+            onChange={(e) => setKeyInput(e.target.value)}
+            placeholder="AIza... で始まるキーを貼り付け"
+            autoComplete="off"
+            className="min-w-0 flex-1 rounded-lg bg-zinc-900 px-3 py-2 font-mono"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              saveApiKey(keyInput);
+              setSavedKey(keyInput.trim());
+            }}
+            disabled={keyInput.trim() === savedKey}
+            className="shrink-0 rounded-lg bg-fuchsia-600 px-3 font-bold hover:bg-fuchsia-500 disabled:bg-zinc-700 disabled:text-zinc-400"
+          >
+            {keyInput.trim() === savedKey && savedKey ? "保存済み" : "保存"}
+          </button>
+        </div>
+        <a
+          href={API_KEY_PAGE}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1 self-start text-xs text-fuchsia-300 hover:underline"
+        >
+          Google AI Studio で API キーを取得 <ExternalLink className="size-3" />
+        </a>
+        <p className="text-xs text-zinc-500">キーはこの PC のブラウザにだけ保存され、Google の API 以外には送られません。</p>
+      </div>
+
+      {savedKey && (
+        <>
+          <CharacterPicker gender="female" />
+          <CharacterPicker gender="male" />
+
+          {characters.length > 0 && (
+            <div className="flex flex-col gap-2 border-t border-white/10 pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-zinc-300">
+                  セリフの声
+                  {shown && (
+                    <span className="ml-2 tabular-nums text-zinc-400">
+                      {shown.done} / {shown.total} 準備済み
+                    </span>
+                  )}
+                </span>
+                {isRunning ? (
+                  <button
+                    type="button"
+                    onClick={() => abortRef.current?.abort()}
+                    className="flex shrink-0 items-center gap-1 rounded-lg bg-zinc-700 px-3 py-1.5 font-bold hover:bg-zinc-600"
+                  >
+                    <Square className="size-4" /> 止める
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void start()}
+                    disabled={shown !== null && shown.done >= shown.total}
+                    className="flex shrink-0 items-center gap-1 rounded-lg bg-fuchsia-600 px-3 py-1.5 font-bold hover:bg-fuchsia-500 disabled:bg-zinc-700 disabled:text-zinc-400"
+                  >
+                    <Sparkles className="size-4" />
+                    {shown && shown.done >= shown.total ? "準備完了" : shown && shown.done > 0 ? "続きを準備する" : "声を準備する"}
+                  </button>
+                )}
+              </div>
+              {shown && (
+                <div className="h-2 overflow-hidden rounded-full bg-zinc-900">
+                  <div
+                    className="h-full bg-gradient-to-r from-fuchsia-500 to-amber-400 transition-[width]"
+                    style={{ width: `${(shown.done / Math.max(1, shown.total)) * 100}%` }}
+                  />
+                </div>
+              )}
+              {progress?.waitingSec !== undefined && (
+                <p className="text-xs text-amber-300">利用上限のため {progress.waitingSec} 秒待っています…</p>
+              )}
+              <p className="text-xs text-zinc-500">
+                全部のセリフを前もって作っておくと、描いている最中もすぐ自然な声で読み上げます（無料枠に収まるよう、ゆっくり作ります）。準備できていないセリフはブラウザの声で読み、裏で作っておきます。
+              </p>
+              {error && <p className="text-xs text-red-400">{error}</p>}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const isBgmOn = useAppStore((s) => s.isBgmOn);
   const bgmNormalId = useAppStore((s) => s.bgmNormalId);
   const bgmFeverId = useAppStore((s) => s.bgmFeverId);
   const voiceMode = useAppStore((s) => s.voiceMode);
+  const ttsEngine = useAppStore((s) => s.ttsEngine);
   const isStrokeSoundOn = useAppStore((s) => s.isStrokeSoundOn);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const voices = useJapaneseVoices();
@@ -294,6 +520,32 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
+          {voiceMode !== "off" && (
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-zinc-800 p-1 text-sm">
+              {(
+                [
+                  ["browser", "ブラウザ標準の声"],
+                  ["gemini", "Gemini の自然な声"],
+                ] as const
+              ).map(([engine, label]) => (
+                <button
+                  key={engine}
+                  type="button"
+                  onClick={() => updateSettings({ ttsEngine: engine })}
+                  className={cn(
+                    "rounded-md py-1.5 font-bold transition",
+                    ttsEngine === engine ? "bg-zinc-950 text-white" : "text-zinc-400 hover:text-white",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {voiceMode !== "off" && ttsEngine === "gemini" && <GeminiVoiceSettings />}
+          {voiceMode !== "off" && ttsEngine === "gemini" && (
+            <p className="text-xs font-bold text-zinc-400">ブラウザ標準の声（Gemini の声を準備できていないセリフに使います）</p>
+          )}
           {voices.length === 0 ? (
             <p className="rounded-lg bg-amber-500/10 p-3 text-xs text-amber-200">
               このブラウザで使える日本語の声が見つかりません。Windows の Edge か Chrome で開いてください。
