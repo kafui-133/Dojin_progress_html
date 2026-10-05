@@ -9,6 +9,36 @@ export interface UserProgress {
   totalStrokes: number;     // クリスタ連携で数えた累計の線の本数
   totalStrokeLength: number; // 累計の線の長さ（画面上の px）
   totalUndos: number;       // 累計のやり直し（Ctrl+Z）回数
+  totalStrokeMs: number;    // 累計のペンが触れていた時間（ms）
+  totalTypedKeys: number;   // 累計のセリフ入力の打鍵数
+  totalKeyOps: number;      // 累計のキー操作（ショートカット）回数
+}
+
+/** 1ページの工程: コマ割り / セリフ入れ / 下書き / ペン入れ / 仕上げ */
+export type StageId = "paneling" | "dialogue" | "sketch" | "inking" | "finishing";
+
+export interface ManuscriptPage {
+  /** 工程ごとの完了時刻（ms）。未完了の工程はキーが無い */
+  done: Partial<Record<StageId, number>>;
+}
+
+/** 原稿の進み具合（ページ × 工程） */
+export interface Manuscript {
+  pages: ManuscriptPage[];
+  /** 原稿を始めた時刻（ms）。グラフの理想ペースの起点 */
+  startedAt: number;
+}
+
+/** 1日ごとの記録（グラフ用） */
+export interface DailyStats {
+  exp: number;
+  strokes: number;
+  strokeMs: number;
+  undos: number;
+  typedKeys: number;
+  keyOps: number;
+  saves: number;
+  pomodoros: number;
 }
 
 export interface ComboState {
@@ -23,7 +53,11 @@ export type ProgressActionType = "paneling" | "panel" | "balloon" | "dialogue" |
 
 /** 進捗アクション1回分の結果。EffectOverlay などの演出トリガーに使う */
 export interface ProgressActionResult {
-  type: ProgressActionType;
+  type: ProgressActionType | "stage";
+  /** カットインに出す（読み上げる）セリフ */
+  cutIn: string;
+  /** ページの工程を完了したときはその内容 */
+  stage?: { page: number; stage: StageId; pageComplete: boolean };
   expGained: number;
   coinsGained: number;
   comboCount: number;
@@ -59,6 +93,16 @@ export interface StrokeResult {
   lengthMilestoneM: number | null; // 区切りの長さ（5m ごと）に達したらその長さ
   durationMs: number;
   lengthPx: number;
+}
+
+/** セリフ入力（キーボードでの連続した打鍵）1回分の結果 */
+export interface TypingResult {
+  id: number;
+  keys: number;
+  expGained: number;
+  totalTypedKeys: number;
+  milestone: boolean;       // 区切りの打鍵数（200打ごと）を超えた
+  inZone: boolean;
 }
 
 /** やり直し（Ctrl+Z）1回分の結果 */

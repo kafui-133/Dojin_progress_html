@@ -11,7 +11,11 @@ export type BridgeEvent =
   | { type: "hello"; mode: BridgeMode }
   | { type: "stroke"; durationMs: number; lengthPx: number }
   | { type: "save" }
-  | { type: "undo" };
+  | { type: "undo" }
+  /** セリフ入力（続けて押したキーの回数） */
+  | { type: "typing"; keys: number }
+  /** キー操作（ショートカット）の回数 */
+  | { type: "keys"; count: number };
 
 export type BridgeStatus = "off" | "connecting" | "connected";
 
@@ -19,11 +23,16 @@ export type BridgeStatus = "off" | "connecting" | "connected";
 export function handleBridgeEvent(event: BridgeEvent): void {
   const store = useAppStore.getState();
   if (event.type === "stroke") {
-    const result = store.recordStroke({ durationMs: event.durationMs, lengthPx: event.lengthPx });
+    const result = store.recordStroke({ durationMs: event.durationMs });
     if (store.isStrokeSoundOn) soundManager.playStroke(result.rush);
   } else if (event.type === "undo") {
     store.recordUndo();
     if (store.isStrokeSoundOn) soundManager.play("undo");
+  } else if (event.type === "typing") {
+    const result = store.recordTyping(event.keys);
+    if (store.isStrokeSoundOn) soundManager.playStroke(Math.min(11, Math.ceil(result.keys / 4)));
+  } else if (event.type === "keys") {
+    store.recordKeyOps(event.count);
   } else if (event.type === "save") {
     // 保存 = 1コマ完成（演出は EffectOverlay が lastAction を見て出す）
     store.recordProgress("save");
@@ -36,6 +45,8 @@ function isBridgeEvent(value: unknown): value is BridgeEvent {
   if (event.type === "stroke") {
     return typeof event.durationMs === "number" && typeof event.lengthPx === "number";
   }
+  if (event.type === "typing") return typeof event.keys === "number" && event.keys > 0;
+  if (event.type === "keys") return typeof event.count === "number" && event.count > 0;
   return event.type === "save" || event.type === "undo" || event.type === "hello";
 }
 

@@ -2,7 +2,6 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-import { ACTIONS } from "@/lib/actions";
 import { useCustomTracks } from "@/lib/customTracks";
 import { useNow } from "@/lib/clock";
 import { burstConfetti, celebrateGoal, vibrate } from "@/lib/effects";
@@ -11,12 +10,13 @@ import { speak, voiceOptions } from "@/lib/voice";
 import { LINES, lengthMilestoneLine, strokeMilestoneLine } from "@/lib/voiceLines";
 import {
   BGM_START_COMBO,
+  TYPING_MILESTONE,
   ZONE_MULTIPLIER,
   isFlowBgmActive,
   isInZone,
   useAppStore,
 } from "@/store/useAppStore";
-import type { ProgressActionResult, StrokeResult, UndoResult } from "@/types";
+import type { ProgressActionResult, StrokeResult, TypingResult, UndoResult } from "@/types";
 
 /** 演出全体の長さ（PRD 5.4: 1.5秒） */
 const EFFECT_MS = 1500;
@@ -44,18 +44,14 @@ interface OverlayEffect {
 }
 
 function fromAction(action: ProgressActionResult & { id: number }): OverlayEffect {
-  const lines = ACTIONS[action.type].cutIns;
   return {
     key: `action-${action.id}`,
     headline: `+${action.expGained.toLocaleString()} EXP!`,
     combo: action.comboCount,
     multiplier: action.feverMultiplier,
     coins: action.coinsGained,
-    cutIn: action.goalReached
-      ? LINES.goal
-      : action.enteredFever
-        ? LINES.fever
-        : lines[action.id % lines.length],
+    // セリフは記録したときに決めている（工程・ページ完成・フィーバー・入稿完了）
+    cutIn: action.cutIn,
     impact: true,
     fever: action.isFever,
     goal: action.goalReached,
@@ -99,6 +95,20 @@ function fromStroke(stroke: StrokeResult): OverlayEffect | null {
     };
   }
   return null;
+}
+
+function fromTyping(typing: TypingResult): OverlayEffect | null {
+  if (!typing.milestone) return null;
+  const total = Math.floor(typing.totalTypedKeys / TYPING_MILESTONE) * TYPING_MILESTONE;
+  return {
+    key: `typing-${typing.id}`,
+    headline: `セリフ${total}打！`,
+    cutIn: LINES.typing,
+    impact: false,
+    fever: typing.inZone,
+    goal: false,
+    durationMs: MILESTONE_EFFECT_MS,
+  };
 }
 
 function fromUndo(undo: UndoResult): OverlayEffect | null {
@@ -190,7 +200,9 @@ export default function EffectOverlay() {
             ? fromStroke(state.lastStroke)
             : state.lastUndo && state.lastUndo !== prev.lastUndo
               ? fromUndo(state.lastUndo)
-              : null;
+              : state.lastTyping && state.lastTyping !== prev.lastTyping
+                ? fromTyping(state.lastTyping)
+                : null;
         // 区切りの演出は、進行中の大きな演出を打ち消さない
         if (next && (next.impact || Date.now() >= activeUntil)) play(next);
       }

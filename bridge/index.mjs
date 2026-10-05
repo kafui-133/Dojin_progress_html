@@ -2,8 +2,9 @@
 // CLIP STUDIO PAINT が前面にあるときだけ、ペンのストロークと Ctrl+S（保存）・Ctrl+Z（やり直し）を検知して
 // ローカルの WebSocket で進捗ブースターに知らせる常駐プログラム。
 //
-// 検知するのは「ペン/マウスの左ボタンを押した・離した・動いた距離」と「Ctrl+S」「Ctrl+Z」だけ。
-// 他のキー入力や描いた内容は読み取らず、記録もしない。通信は PC 内（127.0.0.1）だけ。
+// 検知するのは「ペン/マウスの左ボタンを押した・離した・動いた距離」「Ctrl+S」「Ctrl+Z」と、
+// キーボードを押した「回数」だけ。どのキーを押したか・入力した文字・描いた内容は読み取らず、
+// アプリにも送らない。通信は PC 内（127.0.0.1）だけ。
 //
 // 使い方:
 //   npm run bridge                 … クリスタ連携（Windows）
@@ -25,6 +26,12 @@ const MIN_STROKE_PX = 6;
 const SAVE_COOLDOWN_MS = 5000;
 /** Ctrl+Z の押しっぱなし（キーリピート）は数えすぎないよう間引く */
 const UNDO_MIN_INTERVAL_MS = 120;
+/** キーを押す間隔がこれより空いたら、ひとまとまりの入力が終わったとみなす */
+const KEY_BURST_GAP_MS = 1200;
+/** 続けてこの回数以上押したら「セリフ入力」、それより少なければ「キー操作（ショートカット）」 */
+const TYPING_MIN_KEYS = 4;
+/** 長く打ち続けているときも、この回数ごとに途中経過を送る */
+const TYPING_FLUSH_KEYS = 30;
 
 const ALLOWED_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
@@ -92,6 +99,41 @@ function emitUndo() {
   if (undoCount % 25 === 0) console.log(`↩️  やり直し ${undoCount} 回目`);
 }
 
+// キーは押した回数だけ数え、ひとまとまりの入力ごとに送る
+let burstKeys = 0;
+let burstIsTyping = false;
+let burstTimer;
+let typedTotal = 0;
+
+function flushKeys() {
+  const keys = burstKeys;
+  burstKeys = 0;
+  if (keys === 0) return;
+  if (burstIsTyping || keys >= TYPING_MIN_KEYS) {
+    burstIsTyping = true;
+    typedTotal += keys;
+    broadcast({ type: "typing", keys });
+    if (Math.floor(typedTotal / 200) > Math.floor((typedTotal - keys) / 200)) console.log(`💬 セリフ入力 ${typedTotal} 打鍵`);
+  } else {
+    broadcast({ type: "keys", count: keys });
+  }
+}
+
+function countKey() {
+  burstKeys++;
+  clearTimeout(burstTimer);
+  burstTimer = setTimeout(() => {
+    flushKeys();
+    burstIsTyping = false;
+  }, KEY_BURST_GAP_MS);
+  if (burstKeys >= TYPING_FLUSH_KEYS) flushKeys();
+}
+
+/** Ctrl などの組み合わせ（保存・やり直し以外）はキー操作として1回だけ数える */
+function emitKeyOp() {
+  broadcast({ type: "keys", count: 1 });
+}
+
 // ---- 擬似モード ----
 
 if (!SIMULATE && !ANY_APP && process.platform !== "win32") {
@@ -111,13 +153,21 @@ if (!SIMULATE && !ANY_APP && process.platform !== "win32") {
   );
   wss.close();
 } else if (SIMULATE) {
-  console.log("🧪 擬似モード: 数秒おきに線のまとまりとやり直しを送り、約60秒ごとに保存を送ります");
+  console.log("🧪 擬似モード: 数秒おきに線・やり直し・セリフ入力・キー操作を送り、約60秒ごとに保存を送ります");
   const burst = () => {
     const strokes = 3 + Math.floor(Math.random() * 10);
     let t = 0;
     for (let i = 0; i < strokes; i++) {
       t += 150 + Math.random() * 500;
       setTimeout(() => emitStroke(120 + Math.round(Math.random() * 600), 40 + Math.round(Math.random() * 400)), t);
+    }
+    // ときどきセリフを打つ・ショートカットを押す
+    if (Math.random() < 0.25) {
+      const keys = 8 + Math.floor(Math.random() * 30);
+      setTimeout(() => broadcast({ type: "typing", keys }), t + 300);
+      t += 1500;
+    } else if (Math.random() < 0.3) {
+      setTimeout(() => broadcast({ type: "keys", count: 1 + Math.floor(Math.random() * 2) }), t + 200);
     }
     // ときどき描き直す
     if (Math.random() < 0.4) {
@@ -181,18 +231,35 @@ async function startHooks() {
     if (durationMs >= MIN_STROKE_MS && lengthPx >= MIN_STROKE_PX) emitStroke(durationMs, lengthPx);
   });
 
+  const MODIFIER_KEYS = new Set(
+    ["Ctrl", "CtrlRight", "Alt", "AltRight", "Shift", "ShiftRight", "Meta", "MetaRight"].map((k) => UiohookKey[k]),
+  );
+  /** 押しっぱなしのキーリピートを数えないよう、押されているキーを覚えておく */
+  const pressed = new Set();
+
+  uIOhook.on("keyup", (e) => pressed.delete(e.keycode));
+
   uIOhook.on("keydown", (e) => {
-    if (!e.ctrlKey || !isTargetForeground()) return;
-    if (e.keycode === UiohookKey.S) emitSave();
-    // Ctrl+Shift+Z（やり直しの取り消し）は数えない
-    else if (e.keycode === UiohookKey.Z && !e.shiftKey) emitUndo();
+    if (pressed.has(e.keycode)) {
+      // Ctrl+Z の押しっぱなしだけは、クリスタでも連続でやり直しになるので数える
+      if (e.ctrlKey && e.keycode === UiohookKey.Z && !e.shiftKey && isTargetForeground()) emitUndo();
+      return;
+    }
+    pressed.add(e.keycode);
+    if (MODIFIER_KEYS.has(e.keycode) || !isTargetForeground()) return;
+
+    if (e.ctrlKey && e.keycode === UiohookKey.S) emitSave();
+    // Ctrl+Shift+Z（やり直しの取り消し）はやり直しとしては数えない
+    else if (e.ctrlKey && e.keycode === UiohookKey.Z && !e.shiftKey) emitUndo();
+    else if (e.ctrlKey || e.altKey || e.metaKey) emitKeyOp();
+    else countKey();
   });
 
   uIOhook.start();
   console.log(
     ANY_APP
       ? "👀 すべてのアプリでペン操作を検知中（--any-app）"
-      : "👀 クリスタが前面にあるときのペン操作と Ctrl+S・Ctrl+Z を検知中",
+      : "👀 クリスタが前面にあるときのペン操作・キーボード（回数のみ）・Ctrl+S・Ctrl+Z を検知中",
   );
 
   const stop = () => {

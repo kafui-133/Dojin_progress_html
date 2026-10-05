@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { vibrate } from "@/lib/effects";
 import { soundManager } from "@/lib/soundManager";
 import { cn } from "@/lib/utils";
+import { EMPTY_DAY, toDateString, useAppStore } from "@/store/useAppStore";
 
 type Mode = "focus" | "break";
 
@@ -32,7 +33,10 @@ export default function Timer() {
   const [endAt, setEndAt] = useState<number | null>(null);
   const [pausedRemaining, setPausedRemaining] = useState(DURATION_MS.focus);
   const [tick, setTick] = useState(() => Date.now());
-  const [completedCount, setCompletedCount] = useState(0);
+  const recordPomodoro = useAppStore((s) => s.recordPomodoro);
+  const completedCount = useAppStore(
+    (s) => (s.dailyStats[toDateString(new Date(tick))] ?? EMPTY_DAY).pomodoros,
+  );
 
   const isRunning = endAt !== null;
   const remaining = isRunning ? Math.max(0, endAt - tick) : pausedRemaining;
@@ -48,13 +52,13 @@ export default function Timer() {
       soundManager.play("fanfare");
       vibrate([200, 100, 200]);
       const nextMode: Mode = mode === "focus" ? "break" : "focus";
-      if (mode === "focus") setCompletedCount((c) => c + 1);
+      if (mode === "focus") recordPomodoro();
       setMode(nextMode);
       setEndAt(null);
       setPausedRemaining(DURATION_MS[nextMode]);
     }, 250);
     return () => clearInterval(id);
-  }, [endAt, mode]);
+  }, [endAt, mode, recordPomodoro]);
 
   const start = () => {
     const t = Date.now();

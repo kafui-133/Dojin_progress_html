@@ -1,4 +1,5 @@
 import { ACTIONS } from "@/lib/actions";
+import { PAGE_COMPLETE_LINE, STAGES } from "@/lib/stages";
 
 /**
  * カットインに出す文字（＝読み上げるセリフ）。
@@ -11,6 +12,7 @@ export const LINES = {
   zone: "ZONE突入！！ 線1本 EXP×2",
   unstoppable: "筆が止まらない！！",
   undoMaster: "こだわりの鬼！",
+  typing: "セリフが止まらない！",
 } as const;
 
 export const strokeMilestoneLine = (strokes: number) => `${strokes}本突破！`;
@@ -27,12 +29,15 @@ function range({ step, max }: { step: number; max: number }): number[] {
 /** 読み上げる可能性のあるセリフの一覧（よく出るものから順に） */
 export function getAllVoiceLines(): string[] {
   const lines = [
+    ...STAGES.flatMap((stage) => stage.cutIns),
+    PAGE_COMPLETE_LINE,
     ...Object.values(ACTIONS).flatMap((action) => action.cutIns),
     LINES.fever,
     LINES.zone,
     LINES.goal,
     LINES.unstoppable,
     LINES.undoMaster,
+    LINES.typing,
     ...range(PREPARED_STROKES).map(strokeMilestoneLine),
     ...range(PREPARED_METERS).map(lengthMilestoneLine),
   ];

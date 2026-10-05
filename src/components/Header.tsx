@@ -1,7 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Maximize, Minimize, Music, Settings, VolumeX } from "lucide-react";
+import { BarChart3, LayoutDashboard, Maximize, Minimize, Music, Settings, VolumeX } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import SettingsDialog from "@/components/SettingsDialog";
 import { useNow } from "@/lib/clock";
@@ -18,6 +20,8 @@ export default function Header() {
   const streak = getEffectiveStreak(progress, toDateString(new Date(now)));
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const pathname = usePathname();
+  const onStats = pathname === "/stats";
 
   // 別モニターで全画面表示するためのボタン
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -40,6 +44,14 @@ export default function Header() {
             Syuraba Booster
           </span>
         </h1>
+
+        <Link
+          href={onStats ? "/" : "/stats"}
+          className="flex shrink-0 items-center gap-1 rounded-full bg-zinc-800 px-2 py-1 text-sm font-bold text-zinc-200 transition hover:bg-zinc-700 sm:px-3"
+        >
+          {onStats ? <LayoutDashboard className="size-4" /> : <BarChart3 className="size-4" />}
+          <span className="hidden sm:inline">{onStats ? "ダッシュボード" : "進捗グラフ"}</span>
+        </Link>
 
         <span
           className={cn(

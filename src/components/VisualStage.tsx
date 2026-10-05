@@ -4,7 +4,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Check, Pencil } from "lucide-react";
 import { useState } from "react";
 import { useNow } from "@/lib/clock";
-import { getProgressPercent, toDateString, useAppStore } from "@/store/useAppStore";
+import { getBoardStats, pagesWithDataBeyond } from "@/lib/stages";
+import { MAX_PAGES, toDateString, useAppStore } from "@/store/useAppStore";
 
 const STAGES = [
   { min: 0, label: "白紙の原稿", comment: "まずは1コマから！" },
@@ -157,17 +158,30 @@ function ManuscriptPage({ stage }: { stage: number }) {
 
 function GoalEditor({ onDone }: { onDone: () => void }) {
   const progress = useAppStore((s) => s.progress);
+  const manuscript = useAppStore((s) => s.manuscript);
   const setGoal = useAppStore((s) => s.setGoal);
+  // ページ数は入力途中（"12" を打つ途中の "1" など）で原稿を減らさないよう、完了を押したときに反映する
+  const [pagesDraft, setPagesDraft] = useState(String(progress.targetPages));
+  const [deadlineDraft, setDeadlineDraft] = useState(progress.deadline);
+
+  const apply = () => {
+    const pages = Math.min(MAX_PAGES, Math.max(1, Math.floor(Number(pagesDraft) || progress.targetPages)));
+    const lost = pagesWithDataBeyond(manuscript.pages, pages);
+    if (lost > 0 && !confirm(`${pages + 1}ページ目以降の ${lost} ページ分の完了記録が消えます。よろしいですか？`)) return;
+    setGoal({ targetPages: pages, deadline: deadlineDraft });
+    onDone();
+  };
 
   return (
     <div className="flex flex-wrap items-end gap-3 rounded-lg bg-zinc-900 p-3 text-sm">
       <label className="flex flex-col gap-1">
-        目標ページ数
+        総ページ数
         <input
           type="number"
           min={1}
-          value={progress.targetPages}
-          onChange={(e) => setGoal({ targetPages: Number(e.target.value) || 1 })}
+          max={MAX_PAGES}
+          value={pagesDraft}
+          onChange={(e) => setPagesDraft(e.target.value)}
           className="w-24 rounded bg-zinc-800 px-2 py-1"
         />
       </label>
@@ -175,16 +189,12 @@ function GoalEditor({ onDone }: { onDone: () => void }) {
         入稿締め切り日
         <input
           type="date"
-          value={progress.deadline}
-          onChange={(e) => setGoal({ deadline: e.target.value })}
+          value={deadlineDraft}
+          onChange={(e) => setDeadlineDraft(e.target.value)}
           className="rounded bg-zinc-800 px-2 py-1"
         />
       </label>
-      <button
-        type="button"
-        onClick={onDone}
-        className="ml-auto flex items-center gap-1 rounded bg-fuchsia-600 px-3 py-1.5 font-bold"
-      >
+      <button type="button" onClick={apply} className="ml-auto flex items-center gap-1 rounded bg-fuchsia-600 px-3 py-1.5 font-bold">
         <Check className="size-4" /> 完了
       </button>
     </div>
@@ -194,16 +204,19 @@ function GoalEditor({ onDone }: { onDone: () => void }) {
 export default function VisualStage() {
   const now = useNow(60_000);
   const progress = useAppStore((s) => s.progress);
+  const manuscript = useAppStore((s) => s.manuscript);
   const [isEditing, setIsEditing] = useState(false);
 
-  const percent = getProgressPercent(progress);
+  const board = getBoardStats(manuscript);
+  const percent = board.percent;
   const stageIndex = getStageIndex(percent);
   const stage = STAGES[stageIndex];
   const next = STAGES[stageIndex + 1];
-  const remainingToNext = next
-    ? Math.max(0, Math.ceil((progress.targetPages * next.min) / 100) - progress.completedPages)
-    : 0;
+  const remainingToNext = next ? Math.max(0, Math.ceil((board.total * next.min) / 100) - board.done) : 0;
   const days = daysUntil(progress.deadline, toDateString(new Date(now)));
+  const remainingTasks = board.total - board.done;
+  // 今日を含めて締め切り日までに、1日あたりいくつ工程を終わらせればよいか
+  const pacePerDay = days !== null && days >= 0 && remainingTasks > 0 ? Math.ceil(remainingTasks / (days + 1)) : null;
 
   return (
     <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
@@ -213,7 +226,7 @@ export default function VisualStage() {
           <h2 className="text-lg font-black">{stage.label}</h2>
           <p className="text-sm text-zinc-400">
             {stage.comment}
-            {next && `（次の「${next.label}」まであと ${remainingToNext}）`}
+            {next && `（次の「${next.label}」まであと ${remainingToNext} 工程）`}
           </p>
         </div>
         {stageIndex >= 2 && (
@@ -237,7 +250,7 @@ export default function VisualStage() {
           <span>
             進捗 <span className="text-2xl tabular-nums">{Math.floor(percent)}</span>%
             <span className="ml-2 text-zinc-400">
-              {progress.completedPages} / {progress.targetPages}
+              {board.pagesComplete} / {progress.targetPages} ページ完成
             </span>
           </span>
           <span className={days !== null && days <= 3 ? "text-red-400" : undefined}>
@@ -253,6 +266,12 @@ export default function VisualStage() {
             transition={{ delay: 0.8, duration: 0.7, ease: [0.8, 0, 0.2, 1.3] }}
           />
         </div>
+        <p className="text-xs text-zinc-400">
+          完了した工程 {board.done} / {board.total}
+          {pacePerDay !== null && (
+            <span className="ml-2 font-bold text-amber-300">締め切りまで 1日 {pacePerDay} 工程ペース</span>
+          )}
+        </p>
       </div>
 
       {isEditing ? (
@@ -263,7 +282,7 @@ export default function VisualStage() {
           onClick={() => setIsEditing(true)}
           className="flex items-center gap-1 self-end text-sm text-zinc-400 hover:text-white"
         >
-          <Pencil className="size-4" /> 目標・締め切りを設定
+          <Pencil className="size-4" /> ページ数・締め切りを設定
         </button>
       )}
     </section>

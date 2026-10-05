@@ -4,19 +4,25 @@ import { ACTIONS } from "@/lib/actions";
 import { now as clockNow } from "@/lib/clock";
 import { DEFAULT_FEMALE_CHARACTER, DEFAULT_MALE_CHARACTER } from "@/lib/geminiTts";
 import { DEFAULT_BGM_FEVER, DEFAULT_BGM_NORMAL } from "@/lib/soundManager";
+import { PAGE_COMPLETE_LINE, STAGE_BY_ID, getBoardStats, isPageComplete, resizePages } from "@/lib/stages";
 import { DEFAULT_VOICEVOX_FEMALE, DEFAULT_VOICEVOX_MALE } from "@/lib/voicevox";
+import { LINES } from "@/lib/voiceLines";
 import type {
   AppSettings,
   ComboState,
+  DailyStats,
   FlowState,
+  Manuscript,
   ProgressActionResult,
   ProgressActionType,
+  StageId,
   StrokeResult,
+  TypingResult,
   UndoResult,
   UserProgress,
 } from "@/types";
 
-/** 1アクションあたりの基本獲得コイン（EXP と進むページ数は lib/actions.ts で定義） */
+/** 1アクションあたりの基本獲得コイン（EXP は lib/actions.ts・lib/stages.ts で定義） */
 export const BASE_COINS_PER_ACTION = 100;
 
 /** 前回アクションからこの時間以内ならコンボ継続 */
@@ -32,13 +38,19 @@ export const FEVER_START_COMBO = 3;
 export const BGM_START_COMBO = 2;
 
 export const DEFAULT_TARGET_PAGES = 24;
+export const MAX_PAGES = 200;
 
 // ---- クリスタ連携: 線1本ごとの報酬と「勢い」 ----
-/** 線1本の EXP = 基本 + 長さ(px) × 係数。長い線ほど多くもらえる */
+/**
+ * 線の長さは、ペンが触れていた時間から決める（1秒 ≒ 16cm）。
+ * 実際に動かした距離ではなく「描いていた時間」を長さとして積み上げる。
+ */
+export const STROKE_PX_PER_MS = 0.6;
+/** これより長く触れていても同じ扱い（置きっぱなしで稼げないように） */
+export const STROKE_MAX_MS = 4000;
+/** 線1本の EXP = 基本 + 長さ(px) × 係数。長く描いた線ほど多くもらえる */
 export const STROKE_BASE_EXP = 50;
 export const STROKE_EXP_PER_PX = 0.1;
-/** これより長い線は同じ扱い（極端に長いドラッグで稼げないように） */
-export const STROKE_MAX_LENGTH_PX = 2000;
 export const STROKE_COINS = 1;
 /** 線1本で溜まる勢い = 基本 + 長さに応じた分（平均的な線で20本ほどで MAX） */
 export const FLOW_GAIN_BASE = 3;
@@ -47,6 +59,13 @@ export const FLOW_GAIN_LENGTH_MAX = 4;
 /** やり直し（Ctrl+Z）1回の EXP。試行錯誤もこだわりとして少しだけ評価する */
 export const UNDO_EXP = 20;
 export const UNDO_MILESTONE = 25;
+/** セリフ入力: 1打鍵の EXP と勢い（連続した打鍵のまとまりごとに記録） */
+export const TYPING_EXP_PER_KEY = 8;
+export const TYPING_FLOW_PER_KEY = 0.4;
+export const TYPING_FLOW_MAX = 8;
+export const TYPING_MILESTONE = 200;
+/** キー操作（ショートカット）1回の EXP */
+export const KEY_OP_EXP = 2;
 /** 長さの区切り（この長さごとに演出） */
 export const LENGTH_MILESTONE_M = 5;
 /** 画面上の px をおおよその実寸（m）に直す係数（96dpi 換算） */
@@ -80,7 +99,7 @@ export function toDateString(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function daysBetween(from: string, to: string): number {
+export function daysBetween(from: string, to: string): number {
   const [fy, fm, fd] = from.split("-").map(Number);
   const [ty, tm, td] = to.split("-").map(Number);
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
@@ -121,6 +140,11 @@ export function isFlowBgmActive(flow: FlowState, now: number): boolean {
   return getFlowLevel(flow, now) > 0 && flow.sessionStrokes >= FLOW_BGM_STROKES;
 }
 
+/** ペンが触れていた時間から線の長さ（px）を出す */
+export function strokeLengthFromDuration(durationMs: number): number {
+  return Math.min(Math.max(0, durationMs), STROKE_MAX_MS) * STROKE_PX_PER_MS;
+}
+
 /** 線の長さ（px）を「12cm」「3.4m」のような表示にする */
 export function formatLength(px: number): string {
   const m = px * PX_TO_M;
@@ -129,9 +153,17 @@ export function formatLength(px: number): string {
   return `${(m / 1000).toFixed(2)}km`;
 }
 
-export function getProgressPercent(progress: UserProgress): number {
-  if (progress.targetPages <= 0) return 0;
-  return Math.min(100, (progress.completedPages / progress.targetPages) * 100);
+/** 時間（ms）を「12分」「1時間5分」のような表示にする */
+export function formatDuration(ms: number): string {
+  const totalMin = Math.round(ms / 60_000);
+  if (totalMin < 1) return `${Math.round(ms / 1000)}秒`;
+  if (totalMin < 60) return `${totalMin}分`;
+  return `${Math.floor(totalMin / 60)}時間${totalMin % 60}分`;
+}
+
+/** 原稿全体の進み具合（ページ × 工程のうち完了した割合） */
+export function getProgressPercent(manuscript: Manuscript): number {
+  return getBoardStats(manuscript).percent;
 }
 
 const initialProgress: UserProgress = {
@@ -145,6 +177,9 @@ const initialProgress: UserProgress = {
   totalStrokes: 0,
   totalStrokeLength: 0,
   totalUndos: 0,
+  totalStrokeMs: 0,
+  totalTypedKeys: 0,
+  totalKeyOps: 0,
 };
 
 const initialFlow: FlowState = {
@@ -162,6 +197,21 @@ const initialCombo: ComboState = {
   feverMultiplier: 1.0,
   lastActionTime: 0,
 };
+
+export const EMPTY_DAY: DailyStats = {
+  exp: 0,
+  strokes: 0,
+  strokeMs: 0,
+  undos: 0,
+  typedKeys: 0,
+  keyOps: 0,
+  saves: 0,
+  pomodoros: 0,
+};
+
+function initialManuscript(pages = DEFAULT_TARGET_PAGES): Manuscript {
+  return { pages: resizePages([], pages), startedAt: 0 };
+}
 
 const initialSettings: AppSettings = {
   isBgmOn: true,
@@ -182,6 +232,10 @@ const initialSettings: AppSettings = {
 interface AppState extends AppSettings {
   progress: UserProgress;
   combo: ComboState;
+  /** ページ × 工程の完了記録 */
+  manuscript: Manuscript;
+  /** 日ごとの記録（YYYY-MM-DD → 記録） */
+  dailyStats: Record<string, DailyStats>;
   /** 直近の進捗アクション結果。EffectOverlay がこれを監視して演出する */
   lastAction: (ProgressActionResult & { id: number }) | null;
   /** クリスタ連携の勢い（保存しない） */
@@ -190,12 +244,24 @@ interface AppState extends AppSettings {
   lastStroke: StrokeResult | null;
   /** 直近のやり直しの結果 */
   lastUndo: UndoResult | null;
+  /** 直近のセリフ入力の結果 */
+  lastTyping: TypingResult | null;
 
   recordProgress: (type: ProgressActionType, now?: number) => ProgressActionResult;
+  /** ページの工程を完了にする */
+  completeStage: (page: number, stage: StageId, now?: number) => ProgressActionResult | null;
+  /** ページの工程の完了を取り消す */
+  undoStage: (page: number, stage: StageId) => void;
   /** クリスタで線を1本引いた */
-  recordStroke: (stroke: { durationMs: number; lengthPx: number }, now?: number) => StrokeResult;
+  recordStroke: (stroke: { durationMs: number }, now?: number) => StrokeResult;
   /** クリスタでやり直し（Ctrl+Z）した */
   recordUndo: (now?: number) => UndoResult;
+  /** クリスタでセリフを入力した（連続した打鍵のまとまり） */
+  recordTyping: (keys: number, now?: number) => TypingResult;
+  /** クリスタでキー操作（ショートカット）をした */
+  recordKeyOps: (count: number, now?: number) => void;
+  /** ポモドーロを1回終えた */
+  recordPomodoro: (now?: number) => void;
   /** コンボ受付時間切れならコンボ・フィーバーを解除する（タイマー等から定期的に呼ぶ） */
   expireCombo: (now?: number) => void;
   setGoal: (goal: { targetPages?: number; deadline?: string }) => void;
@@ -206,43 +272,87 @@ interface AppState extends AppSettings {
   resetProgress: () => void;
 }
 
+/** 今日の記録に足し込んだ dailyStats を返す */
+function addDaily(
+  dailyStats: Record<string, DailyStats>,
+  today: string,
+  patch: Partial<DailyStats>,
+): Record<string, DailyStats> {
+  const day = { ...EMPTY_DAY, ...dailyStats[today] };
+  for (const [key, value] of Object.entries(patch) as [keyof DailyStats, number][]) day[key] += value;
+  return { ...dailyStats, [today]: day };
+}
+
+/** 勢いを上げる（ゾーン判定込み） */
+function gainFlow(flow: FlowState, now: number, gain: number) {
+  const level = getFlowLevel(flow, now);
+  const wasInZone = isInZone(flow, now);
+  const newLevel = Math.min(100, level + gain);
+  const inZone = wasInZone || newLevel >= 100;
+  return { level, newLevel, wasInZone, inZone };
+}
+
+/** 勢いは減らさず（増やしもせず）、手が動いていることだけ記録する */
+function keepFlowAlive(flow: FlowState, now: number): FlowState {
+  return flow.lastActivityAt > 0
+    ? { ...flow, level: getFlowLevel(flow, now), inZone: isInZone(flow, now), lastActivityAt: now }
+    : flow;
+}
+
+/** ゾーンの倍率とボタン/保存のコンボ倍率のうち、高い方 */
+function activityMultiplier(combo: ComboState, inZone: boolean, now: number): number {
+  const comboMultiplier = isComboAlive(combo.lastActionTime, now) ? combo.feverMultiplier : 1;
+  return Math.max(inZone ? ZONE_MULTIPLIER : 1, comboMultiplier);
+}
+
 export const useAppStore = create<AppState>()(
   persist(
-    (set, get) => ({
-      progress: initialProgress,
-      combo: initialCombo,
-      lastAction: null,
-      flow: initialFlow,
-      lastStroke: null,
-      lastUndo: null,
-      ...initialSettings,
-
-      recordProgress: (type, now = clockNow()) => {
-        const { progress, combo } = get();
+    (set, get) => {
+      /**
+       * ボタン・保存・工程の完了に共通の処理（コンボ・EXP・コイン・連続日数）。
+       * 演出は lastAction を見て EffectOverlay が出す。
+       */
+      const applyAction = (
+        now: number,
+        input: {
+          type: ProgressActionResult["type"];
+          exp: number;
+          cutIns: string[];
+          stage?: ProgressActionResult["stage"];
+          goalReached?: boolean;
+          manuscript?: Manuscript;
+          daily?: Partial<DailyStats>;
+        },
+      ): ProgressActionResult => {
+        const { progress, combo, dailyStats } = get();
 
         const comboCount = isComboAlive(combo.lastActionTime, now) ? combo.comboCount + 1 : 1;
         const feverMultiplier = getFeverMultiplier(comboCount);
         const isFever = comboCount >= FEVER_START_COMBO;
-
-        const expGained = Math.round(ACTIONS[type].exp * feverMultiplier);
+        const expGained = Math.round(input.exp * feverMultiplier);
         const coinsGained = Math.round(BASE_COINS_PER_ACTION * feverMultiplier);
-        const completedPages = progress.completedPages + ACTIONS[type].pages;
         const today = toDateString(new Date(now));
         const currentStreak = getNextStreak(progress, today);
+        const enteredFever = isFever && !combo.isFever;
+        const goalReached = input.goalReached ?? false;
+
+        let cutIn = input.cutIns[now % input.cutIns.length];
+        if (input.stage?.pageComplete) cutIn = PAGE_COMPLETE_LINE;
+        if (enteredFever) cutIn = LINES.fever;
+        if (goalReached) cutIn = LINES.goal;
 
         const result: ProgressActionResult = {
-          type,
+          type: input.type,
+          cutIn,
+          stage: input.stage,
           expGained,
           coinsGained,
           comboCount,
           feverMultiplier,
           isFever,
-          enteredFever: isFever && !combo.isFever,
+          enteredFever,
           multiplierUp: feverMultiplier > combo.feverMultiplier,
-          goalReached:
-            progress.targetPages > 0 &&
-            progress.completedPages < progress.targetPages &&
-            completedPages >= progress.targetPages,
+          goalReached,
           currentStreak,
         };
 
@@ -251,150 +361,282 @@ export const useAppStore = create<AppState>()(
             ...progress,
             totalExp: progress.totalExp + expGained,
             coins: progress.coins + coinsGained,
-            completedPages,
             currentStreak,
             lastActiveDate: today,
           },
           combo: { comboCount, isFever, feverMultiplier, lastActionTime: now },
+          dailyStats: addDaily(dailyStats, today, { exp: expGained, ...input.daily }),
+          ...(input.manuscript && { manuscript: input.manuscript }),
           lastAction: { ...result, id: now },
         });
-
         return result;
-      },
+      };
 
-      recordStroke: ({ durationMs, lengthPx }, now = clockNow()) => {
-        const { progress, combo, flow, lastStroke } = get();
+      return {
+        progress: initialProgress,
+        combo: initialCombo,
+        manuscript: initialManuscript(),
+        dailyStats: {},
+        lastAction: null,
+        flow: initialFlow,
+        lastStroke: null,
+        lastUndo: null,
+        lastTyping: null,
+        ...initialSettings,
 
-        const length = Math.min(Math.max(0, lengthPx), STROKE_MAX_LENGTH_PX);
-        const level = getFlowLevel(flow, now);
-        const wasInZone = isInZone(flow, now);
-        const gain = FLOW_GAIN_BASE + Math.min(FLOW_GAIN_LENGTH_MAX, length * FLOW_GAIN_PER_PX);
-        const newLevel = Math.min(100, level + gain);
-        const inZone = wasInZone || newLevel >= 100;
-        const rush = flow.lastActivityAt > 0 && now - flow.lastActivityAt <= RUSH_GAP_MS ? flow.rush + 1 : 1;
-        const sessionContinues = level > 0;
-        const sessionStrokes = (sessionContinues ? flow.sessionStrokes : 0) + 1;
-        const prevSessionLength = sessionContinues ? flow.sessionLengthPx : 0;
-        const sessionLengthPx = prevSessionLength + lengthPx;
-        const prevMeters = Math.floor((prevSessionLength * PX_TO_M) / LENGTH_MILESTONE_M);
-        const meters = Math.floor((sessionLengthPx * PX_TO_M) / LENGTH_MILESTONE_M);
+        recordProgress: (type, now = clockNow()) =>
+          applyAction(now, {
+            type,
+            exp: ACTIONS[type].exp,
+            cutIns: ACTIONS[type].cutIns,
+            daily: type === "save" ? { saves: 1 } : undefined,
+          }),
 
-        // ゾーンの倍率とボタン/保存のコンボ倍率のうち、高い方をかける
-        const comboMultiplier = isComboAlive(combo.lastActionTime, now) ? combo.feverMultiplier : 1;
-        const multiplier = Math.max(inZone ? ZONE_MULTIPLIER : 1, comboMultiplier);
-        const expGained = Math.round((STROKE_BASE_EXP + length * STROKE_EXP_PER_PX) * multiplier);
-        const coinsGained = Math.round(STROKE_COINS * multiplier);
-        const today = toDateString(new Date(now));
+        completeStage: (pageIndex, stageId, now = clockNow()) => {
+          const { manuscript } = get();
+          const page = manuscript.pages[pageIndex];
+          if (!page || page.done[stageId] !== undefined) return null;
 
-        const result: StrokeResult = {
-          id: (lastStroke?.id ?? 0) + 1,
-          expGained,
-          coinsGained,
-          multiplier,
-          rush,
-          sessionStrokes,
-          inZone,
-          enteredZone: inZone && !wasInZone,
-          milestone: sessionStrokes % STROKE_MILESTONE === 0,
-          lengthMilestoneM: meters > prevMeters ? meters * LENGTH_MILESTONE_M : null,
-          durationMs,
-          lengthPx,
-        };
+          const before = getBoardStats(manuscript);
+          const pages = manuscript.pages.map((p, i) =>
+            i === pageIndex ? { done: { ...p.done, [stageId]: now } } : p,
+          );
+          const next: Manuscript = {
+            pages,
+            startedAt: manuscript.startedAt || now,
+          };
+          const after = getBoardStats(next);
+          const stage = STAGE_BY_ID[stageId];
 
-        set({
-          progress: {
-            ...progress,
-            totalExp: progress.totalExp + expGained,
-            coins: progress.coins + coinsGained,
-            totalStrokes: progress.totalStrokes + 1,
-            totalStrokeLength: progress.totalStrokeLength + lengthPx,
-            currentStreak: getNextStreak(progress, today),
-            lastActiveDate: today,
-          },
-          flow: { level: newLevel, lastActivityAt: now, rush, sessionStrokes, sessionLengthPx, inZone },
-          lastStroke: result,
-        });
+          return applyAction(now, {
+            type: "stage",
+            exp: stage.exp,
+            cutIns: stage.cutIns,
+            stage: { page: pageIndex, stage: stageId, pageComplete: isPageComplete(pages[pageIndex]) },
+            goalReached: before.done < before.total && after.done === after.total,
+            manuscript: next,
+          });
+        },
 
-        return result;
-      },
+        undoStage: (pageIndex, stageId) =>
+          set(({ manuscript }) => ({
+            manuscript: {
+              ...manuscript,
+              pages: manuscript.pages.map((p, i) => {
+                if (i !== pageIndex) return p;
+                const done = { ...p.done };
+                delete done[stageId];
+                return { done };
+              }),
+            },
+          })),
 
-      recordUndo: (now = clockNow()) => {
-        const { progress, flow, lastUndo } = get();
-        const totalUndos = progress.totalUndos + 1;
-        const today = toDateString(new Date(now));
-        const result: UndoResult = {
-          id: (lastUndo?.id ?? 0) + 1,
-          expGained: UNDO_EXP,
-          totalUndos,
-          milestone: totalUndos % UNDO_MILESTONE === 0,
-        };
+        recordStroke: ({ durationMs }, now = clockNow()) => {
+          const { progress, combo, flow, lastStroke, dailyStats } = get();
 
-        set({
-          progress: {
-            ...progress,
-            totalExp: progress.totalExp + UNDO_EXP,
+          const lengthPx = strokeLengthFromDuration(durationMs);
+          const contactMs = Math.min(Math.max(0, durationMs), STROKE_MAX_MS);
+          const gain = FLOW_GAIN_BASE + Math.min(FLOW_GAIN_LENGTH_MAX, lengthPx * FLOW_GAIN_PER_PX);
+          const { level, newLevel, wasInZone, inZone } = gainFlow(flow, now, gain);
+          const rush = flow.lastActivityAt > 0 && now - flow.lastActivityAt <= RUSH_GAP_MS ? flow.rush + 1 : 1;
+          const sessionContinues = level > 0;
+          const sessionStrokes = (sessionContinues ? flow.sessionStrokes : 0) + 1;
+          const prevSessionLength = sessionContinues ? flow.sessionLengthPx : 0;
+          const sessionLengthPx = prevSessionLength + lengthPx;
+          const prevMeters = Math.floor((prevSessionLength * PX_TO_M) / LENGTH_MILESTONE_M);
+          const meters = Math.floor((sessionLengthPx * PX_TO_M) / LENGTH_MILESTONE_M);
+
+          const multiplier = activityMultiplier(combo, inZone, now);
+          const expGained = Math.round((STROKE_BASE_EXP + lengthPx * STROKE_EXP_PER_PX) * multiplier);
+          const coinsGained = Math.round(STROKE_COINS * multiplier);
+          const today = toDateString(new Date(now));
+
+          const result: StrokeResult = {
+            id: (lastStroke?.id ?? 0) + 1,
+            expGained,
+            coinsGained,
+            multiplier,
+            rush,
+            sessionStrokes,
+            inZone,
+            enteredZone: inZone && !wasInZone,
+            milestone: sessionStrokes % STROKE_MILESTONE === 0,
+            lengthMilestoneM: meters > prevMeters ? meters * LENGTH_MILESTONE_M : null,
+            durationMs,
+            lengthPx,
+          };
+
+          set({
+            progress: {
+              ...progress,
+              totalExp: progress.totalExp + expGained,
+              coins: progress.coins + coinsGained,
+              totalStrokes: progress.totalStrokes + 1,
+              totalStrokeLength: progress.totalStrokeLength + lengthPx,
+              totalStrokeMs: progress.totalStrokeMs + contactMs,
+              currentStreak: getNextStreak(progress, today),
+              lastActiveDate: today,
+            },
+            flow: { level: newLevel, lastActivityAt: now, rush, sessionStrokes, sessionLengthPx, inZone },
+            dailyStats: addDaily(dailyStats, today, { exp: expGained, strokes: 1, strokeMs: contactMs }),
+            lastStroke: result,
+          });
+
+          return result;
+        },
+
+        recordUndo: (now = clockNow()) => {
+          const { progress, flow, lastUndo, dailyStats } = get();
+          const totalUndos = progress.totalUndos + 1;
+          const today = toDateString(new Date(now));
+          const result: UndoResult = {
+            id: (lastUndo?.id ?? 0) + 1,
+            expGained: UNDO_EXP,
             totalUndos,
-            currentStreak: getNextStreak(progress, today),
-            lastActiveDate: today,
-          },
-          // 直している間も手は動いているので、勢いは減らさない（増やしもしない）
-          flow:
-            flow.lastActivityAt > 0
-              ? { ...flow, level: getFlowLevel(flow, now), inZone: isInZone(flow, now), lastActivityAt: now }
-              : flow,
-          lastUndo: result,
-        });
+            milestone: totalUndos % UNDO_MILESTONE === 0,
+          };
 
-        return result;
-      },
+          set({
+            progress: {
+              ...progress,
+              totalExp: progress.totalExp + UNDO_EXP,
+              totalUndos,
+              currentStreak: getNextStreak(progress, today),
+              lastActiveDate: today,
+            },
+            // 直している間も手は動いているので、勢いは減らさない（増やしもしない）
+            flow: keepFlowAlive(flow, now),
+            dailyStats: addDaily(dailyStats, today, { exp: UNDO_EXP, undos: 1 }),
+            lastUndo: result,
+          });
 
-      expireCombo: (now = clockNow()) => {
-        const { combo } = get();
-        if (combo.comboCount > 0 && !isComboAlive(combo.lastActionTime, now)) {
-          set({ combo: { ...initialCombo } });
-        }
-      },
+          return result;
+        },
 
-      setGoal: ({ targetPages, deadline }) =>
-        set((state) => ({
-          progress: {
-            ...state.progress,
-            ...(targetPages !== undefined && { targetPages: Math.max(1, Math.floor(targetPages)) }),
-            ...(deadline !== undefined && { deadline }),
-          },
-        })),
+        recordTyping: (keys, now = clockNow()) => {
+          const { progress, combo, flow, lastTyping, dailyStats } = get();
+          const count = Math.max(1, Math.round(keys));
+          const { newLevel, inZone } = gainFlow(flow, now, Math.min(TYPING_FLOW_MAX, count * TYPING_FLOW_PER_KEY));
+          const multiplier = activityMultiplier(combo, inZone, now);
+          const expGained = Math.round(count * TYPING_EXP_PER_KEY * multiplier);
+          const totalTypedKeys = progress.totalTypedKeys + count;
+          const today = toDateString(new Date(now));
 
-      setBgmOn: (on) => set({ isBgmOn: on }),
-      setBridgeEnabled: (on) => set({ isBridgeEnabled: on }),
-      setStrokeSoundOn: (on) => set({ isStrokeSoundOn: on }),
-      updateSettings: (patch) => set(patch),
+          const result: TypingResult = {
+            id: (lastTyping?.id ?? 0) + 1,
+            keys: count,
+            expGained,
+            totalTypedKeys,
+            milestone:
+              Math.floor(totalTypedKeys / TYPING_MILESTONE) > Math.floor(progress.totalTypedKeys / TYPING_MILESTONE),
+            inZone,
+          };
 
-      resetProgress: () =>
-        set({
-          progress: initialProgress,
-          combo: initialCombo,
-          lastAction: null,
-          flow: initialFlow,
-          lastStroke: null,
-          lastUndo: null,
-        }),
-    }),
+          set({
+            progress: {
+              ...progress,
+              totalExp: progress.totalExp + expGained,
+              totalTypedKeys,
+              currentStreak: getNextStreak(progress, today),
+              lastActiveDate: today,
+            },
+            // セリフ入力も描いているのと同じく勢いになる（線の本数・RUSH は増えない）
+            flow: { ...flow, level: newLevel, inZone, lastActivityAt: now },
+            dailyStats: addDaily(dailyStats, today, { exp: expGained, typedKeys: count }),
+            lastTyping: result,
+          });
+
+          return result;
+        },
+
+        recordKeyOps: (count, now = clockNow()) => {
+          const { progress, flow, dailyStats } = get();
+          const ops = Math.max(1, Math.round(count));
+          const today = toDateString(new Date(now));
+          set({
+            progress: {
+              ...progress,
+              totalExp: progress.totalExp + ops * KEY_OP_EXP,
+              totalKeyOps: progress.totalKeyOps + ops,
+              currentStreak: getNextStreak(progress, today),
+              lastActiveDate: today,
+            },
+            flow: keepFlowAlive(flow, now),
+            dailyStats: addDaily(dailyStats, today, { exp: ops * KEY_OP_EXP, keyOps: ops }),
+          });
+        },
+
+        recordPomodoro: (now = clockNow()) =>
+          set(({ dailyStats }) => ({
+            dailyStats: addDaily(dailyStats, toDateString(new Date(now)), { pomodoros: 1 }),
+          })),
+
+        expireCombo: (now = clockNow()) => {
+          const { combo } = get();
+          if (combo.comboCount > 0 && !isComboAlive(combo.lastActionTime, now)) {
+            set({ combo: { ...initialCombo } });
+          }
+        },
+
+        setGoal: ({ targetPages, deadline }) =>
+          set((state) => {
+            const pages =
+              targetPages !== undefined ? Math.min(MAX_PAGES, Math.max(1, Math.floor(targetPages))) : undefined;
+            return {
+              progress: {
+                ...state.progress,
+                ...(pages !== undefined && { targetPages: pages }),
+                ...(deadline !== undefined && { deadline }),
+              },
+              ...(pages !== undefined && {
+                manuscript: { ...state.manuscript, pages: resizePages(state.manuscript.pages, pages) },
+              }),
+            };
+          }),
+
+        setBgmOn: (on) => set({ isBgmOn: on }),
+        setBridgeEnabled: (on) => set({ isBridgeEnabled: on }),
+        setStrokeSoundOn: (on) => set({ isStrokeSoundOn: on }),
+        updateSettings: (patch) => set(patch),
+
+        resetProgress: () =>
+          set((state) => ({
+            progress: { ...initialProgress, targetPages: state.progress.targetPages, deadline: state.progress.deadline },
+            combo: initialCombo,
+            manuscript: initialManuscript(state.progress.targetPages),
+            dailyStats: {},
+            lastAction: null,
+            flow: initialFlow,
+            lastStroke: null,
+            lastUndo: null,
+            lastTyping: null,
+          })),
+      };
+    },
     {
       name: "syuraba-booster",
       storage: createJSONStorage(() => localStorage),
-      version: 3,
+      version: 4,
       migrate: (persisted, version) => {
         const state = { ...(persisted as Partial<AppState>) };
         // v0 では BGM が手動 ON 方式で初期値 OFF だったため、自動再生方式に合わせて ON にする
         if (version < 1) state.isBgmOn = true;
-        // 後から増えた進捗の項目（線の本数・長さ・やり直し回数）を 0 で補う
-        if (state.progress) state.progress = { ...initialProgress, ...state.progress };
+        // 後から増えた進捗の項目を 0 で補う
+        state.progress = { ...initialProgress, ...state.progress };
+        // v4 でページ × 工程の記録と日ごとの記録を追加
+        const pages = state.progress.targetPages;
+        state.manuscript = state.manuscript
+          ? { ...state.manuscript, pages: resizePages(state.manuscript.pages, pages) }
+          : initialManuscript(pages);
+        state.dailyStats ??= {};
         return state;
       },
       // 演出トリガーと勢いは再読込時に引き継がない
       partialize: (state) => ({
         progress: state.progress,
         combo: state.combo,
+        manuscript: state.manuscript,
+        dailyStats: state.dailyStats,
         isBgmOn: state.isBgmOn,
         isBridgeEnabled: state.isBridgeEnabled,
         isStrokeSoundOn: state.isStrokeSoundOn,

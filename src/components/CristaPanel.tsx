@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   RUSH_GAP_MS,
   ZONE_EXIT_LEVEL,
+  formatDuration,
   formatLength,
   getFlowLevel,
   isInZone,
@@ -19,6 +20,7 @@ import type { StrokeResult } from "@/types";
 // ---- ライブ集中線キャンバス ----
 
 interface InkLine {
+  kind: "line";
   angle: number;
   /** 線の先端が届く位置（中心からの距離 / 短辺の半分） */
   reach: number;
@@ -30,10 +32,26 @@ interface InkLine {
   removedAt?: number;
 }
 
+/** セリフ入力で置かれる吹き出し */
+interface InkBalloon {
+  kind: "balloon";
+  /** 中心の位置（キャンバスに対する割合） */
+  x: number;
+  y: number;
+  /** 大きさ（短辺の半分に対する割合）。打った数が多いほど大きい */
+  size: number;
+  /** 中の文字の行数 */
+  rows: number;
+  bornAt: number;
+  removedAt?: number;
+}
+
+type InkItem = InkLine | InkBalloon;
+
 interface Popup {
   key: string;
   text: string;
-  tone: "normal" | "zone" | "undo";
+  tone: "normal" | "zone" | "undo" | "typing";
 }
 
 const GROW_MS = 220;
@@ -43,6 +61,7 @@ const MAX_LINES = 400;
 function lineFromStroke(stroke: StrokeResult, bornAt: number): InkLine {
   const reach = 0.85 - Math.min(0.6, stroke.lengthPx / 1500) + (Math.random() - 0.5) * 0.16;
   return {
+    kind: "line",
     angle: Math.random() * Math.PI * 2,
     reach: Math.min(0.9, Math.max(0.18, reach)),
     width: 2 + Math.min(7, stroke.durationMs / 120),
@@ -52,7 +71,74 @@ function lineFromStroke(stroke: StrokeResult, bornAt: number): InkLine {
   };
 }
 
-function drawLines(canvas: HTMLCanvasElement, lines: InkLine[], now: number): boolean {
+function balloonFromTyping(keys: number, bornAt: number): InkBalloon {
+  return {
+    kind: "balloon",
+    x: 0.2 + Math.random() * 0.6,
+    y: 0.2 + Math.random() * 0.6,
+    size: 0.12 + Math.min(0.18, keys * 0.006),
+    rows: Math.min(4, 1 + Math.floor(keys / 10)),
+    bornAt,
+  };
+}
+
+/** 生まれてからの伸び具合と、やり直しで消えていく具合を合わせた 0〜1 */
+function itemProgress(item: InkItem, now: number) {
+  const grow = Math.min(1, (now - item.bornAt) / GROW_MS);
+  const retract = item.removedAt === undefined ? 0 : Math.min(1, (now - item.removedAt) / RETRACT_MS);
+  return { raw: grow * (1 - retract), highlighted: grow < 1 || item.removedAt !== undefined };
+}
+
+function drawBalloon(ctx: CanvasRenderingContext2D, b: InkBalloon, w: number, h: number, now: number): boolean {
+  const { raw, highlighted } = itemProgress(b, now);
+  // ポンッと少し大きくなってから落ち着く（easeOutBack）
+  const c = 1.7;
+  const scale = raw <= 0 ? 0 : 1 + (c + 1) * Math.pow(raw - 1, 3) + c * Math.pow(raw - 1, 2);
+  const half = Math.min(w, h) / 2;
+  const rx = b.size * half * scale;
+  const ry = rx * 0.62;
+  const cx = b.x * w;
+  const cy = b.y * h;
+  if (rx <= 0.5) return highlighted;
+
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#111";
+  ctx.fillStyle = "#fff";
+  if (highlighted) {
+    ctx.shadowColor = b.removedAt === undefined ? "#38bdf8" : "#22d3ee";
+    ctx.shadowBlur = 14;
+  }
+  // しっぽ（中心から離れる向き）
+  const away = Math.atan2(cy - h / 2, cx - w / 2);
+  ctx.beginPath();
+  ctx.moveTo(cx + Math.cos(away + 0.35) * rx * 0.7, cy + Math.sin(away + 0.35) * ry * 0.7);
+  ctx.lineTo(cx + Math.cos(away) * rx * 1.45, cy + Math.sin(away) * ry * 1.6);
+  ctx.lineTo(cx + Math.cos(away - 0.35) * rx * 0.7, cy + Math.sin(away - 0.35) * ry * 0.7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  // 中のセリフ（文字の代わりの線）
+  ctx.strokeStyle = "#9ca3af";
+  ctx.lineWidth = Math.max(1.5, ry * 0.12);
+  for (let i = 0; i < b.rows; i++) {
+    const y = cy + (i - (b.rows - 1) / 2) * ry * 0.38;
+    const len = rx * (i === b.rows - 1 ? 0.7 : 1.1);
+    ctx.beginPath();
+    ctx.moveTo(cx - len / 2, y);
+    ctx.lineTo(cx + len / 2, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+  return highlighted;
+}
+
+function drawLines(canvas: HTMLCanvasElement, items: InkItem[], now: number): boolean {
   const ctx = canvas.getContext("2d");
   if (!ctx) return false;
   const dpr = window.devicePixelRatio || 1;
@@ -67,12 +153,11 @@ function drawLines(canvas: HTMLCanvasElement, lines: InkLine[], now: number): bo
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  for (const line of lines) {
-    const grow = Math.min(1, (now - line.bornAt) / GROW_MS);
+  // 吹き出しは集中線の上に重ねる
+  for (const line of items) {
+    if (line.kind !== "line") continue;
     // やり直された線は、引いたときと逆向きにシュッと縮んで消える
-    const retract = line.removedAt === undefined ? 0 : Math.min(1, (now - line.removedAt) / RETRACT_MS);
-    const raw = grow * (1 - retract);
-    const highlighted = grow < 1 || line.removedAt !== undefined;
+    const { raw, highlighted } = itemProgress(line, now);
     if (highlighted) animating = true;
     const p = 1 - Math.pow(1 - raw, 3); // easeOutCubic: シュッと伸びて止まる
     const inner = line.reach * half;
@@ -98,16 +183,20 @@ function drawLines(canvas: HTMLCanvasElement, lines: InkLine[], now: number): bo
     ctx.fill();
   }
   ctx.shadowBlur = 0;
+  for (const item of items) {
+    if (item.kind === "balloon" && drawBalloon(ctx, item, w, h, now)) animating = true;
+  }
   return animating;
 }
 
 function LiveInk() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const linesRef = useRef<InkLine[]>([]);
+  const linesRef = useRef<InkItem[]>([]);
   const frameRef = useRef<number | null>(null);
   const [lineCount, setLineCount] = useState(0);
   const [panelLength, setPanelLength] = useState(0);
   const [panelUndos, setPanelUndos] = useState(0);
+  const [panelTyped, setPanelTyped] = useState(0);
   const [completedPanels, setCompletedPanels] = useState(0);
   const [popup, setPopup] = useState<Popup | null>(null);
 
@@ -145,6 +234,7 @@ function LiveInk() {
       setLineCount(0);
       setPanelLength(0);
       setPanelUndos(0);
+      setPanelTyped(0);
       requestRender();
     };
 
@@ -161,15 +251,24 @@ function LiveInk() {
       }
       const undo = state.lastUndo;
       if (undo && undo !== prev.lastUndo) {
-        // 最後に引いた線を巻き戻す
-        const target = linesRef.current.findLast((line) => line.removedAt === undefined);
+        // 最後に描いた線・置いた吹き出しを巻き戻す
+        const target = linesRef.current.findLast((item) => item.removedAt === undefined);
         if (target) {
           target.removedAt = performance.now();
-          setLineCount((n) => Math.max(0, n - 1));
-          setPanelLength((len) => Math.max(0, len - target.lengthPx));
+          if (target.kind === "line") {
+            setLineCount((n) => Math.max(0, n - 1));
+            setPanelLength((len) => Math.max(0, len - target.lengthPx));
+          }
         }
         setPanelUndos((n) => n + 1);
         setPopup({ key: `u${undo.id}`, text: `↩ こだわり +${undo.expGained}`, tone: "undo" });
+        requestRender();
+      }
+      const typing = state.lastTyping;
+      if (typing && typing !== prev.lastTyping) {
+        linesRef.current = [...linesRef.current, balloonFromTyping(typing.keys, performance.now())].slice(-MAX_LINES);
+        setPanelTyped((n) => n + typing.keys);
+        setPopup({ key: `t${typing.id}`, text: `💬 +${typing.expGained}`, tone: "typing" });
         requestRender();
       }
       if (state.lastAction?.type === "save" && state.lastAction !== prev.lastAction) {
@@ -200,6 +299,11 @@ function LiveInk() {
         <span className="rounded bg-black/80 px-2 py-0.5 text-xs font-bold text-white">
           このコマ {lineCount}本・{formatLength(panelLength)}
         </span>
+        {panelTyped > 0 && (
+          <span className="rounded bg-sky-700/90 px-2 py-0.5 text-xs font-bold text-white">
+            セリフ {panelTyped}打
+          </span>
+        )}
         {panelUndos > 0 && (
           <span className="rounded bg-cyan-700/90 px-2 py-0.5 text-xs font-bold text-white">
             やり直し {panelUndos}回
@@ -225,7 +329,13 @@ function LiveInk() {
             key={popup.key}
             className={cn(
               "pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 whitespace-nowrap text-2xl font-black drop-shadow-[0_2px_0_rgba(0,0,0,0.6)] [-webkit-text-stroke:1px_#000]",
-              popup.tone === "zone" ? "text-amber-300" : popup.tone === "undo" ? "text-cyan-300" : "text-white",
+              popup.tone === "zone"
+                ? "text-amber-300"
+                : popup.tone === "undo"
+                  ? "text-cyan-300"
+                  : popup.tone === "typing"
+                    ? "text-sky-300"
+                    : "text-white",
             )}
             initial={{ opacity: 0, y: 0, scale: 0.6 }}
             animate={{ opacity: [0, 1, 1, 0], y: -40, scale: 1 }}
@@ -275,7 +385,13 @@ function FlowGauge() {
           )}
           <div>
             累計 {progress.totalStrokes.toLocaleString()}本・{formatLength(progress.totalStrokeLength)}
+            <span className="ml-1">（ペン {formatDuration(progress.totalStrokeMs)}）</span>
           </div>
+          {(progress.totalTypedKeys > 0 || progress.totalKeyOps > 0) && (
+            <div>
+              セリフ {progress.totalTypedKeys.toLocaleString()}打・キー操作 {progress.totalKeyOps.toLocaleString()}回
+            </div>
+          )}
           {progress.totalUndos > 0 && <div>やり直し 累計 {progress.totalUndos.toLocaleString()}回</div>}
         </div>
       </div>
@@ -380,7 +496,7 @@ export default function CristaPanel() {
       )}
       {status === "off" && (
         <p className="text-sm text-zinc-400">
-          ON にすると、クリスタで線を引くたび・保存するたびにここが反応します。保存（Ctrl+S）は「1コマ完成」として記録されます。
+          ON にすると、クリスタで線を引く・セリフを打つ・キーを押す・保存するたびにここが反応します。線の長さはペンが触れていた時間で決まります。
         </p>
       )}
 
