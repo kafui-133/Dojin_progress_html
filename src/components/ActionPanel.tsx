@@ -12,6 +12,7 @@ import {
   COMBO_WINDOW_MS,
   FEVER_START_COMBO,
   getNextMultiplier,
+  useActiveProject,
   useAppStore,
 } from "@/store/useAppStore";
 
@@ -76,6 +77,7 @@ function ComboGauge({ now }: { now: number }) {
 }
 
 export default function ActionPanel() {
+  const isManga = useActiveProject().type === "manga";
   const now = useNow();
   const combo = useAppStore((s) => s.combo);
   const recordProgress = useAppStore((s) => s.recordProgress);
@@ -92,56 +94,64 @@ export default function ActionPanel() {
     <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
       <ComboGauge now={now} />
 
-      <ManuscriptBoard />
+      {isManga ? (
+        <ManuscriptBoard />
+      ) : (
+        <p className="rounded-lg bg-zinc-800/60 p-3 text-xs text-zinc-400">
+          🎨 イラストモードでは、クリスタでの線・ペン時間・やり直し（Ctrl+Z）を記録します。保存（Ctrl+S）でコンボが進みます。グラフは「進捗グラフ」で見られます。
+        </p>
+      )}
 
       {/* ページに紐づかない記録（以前からのボタン）。EXP とコンボだけ増える */}
-      <details className="group rounded-lg border border-white/10 p-3">
-        <summary className="cursor-pointer text-xs font-bold text-zinc-400">
-          ほかの記録（ページに関係なく EXP・コンボだけ）
-        </summary>
-        <div className="mt-3 flex flex-col gap-4">
-          {ACTION_GROUPS.map((group) => (
-            <div key={group.title} className="flex flex-col gap-2">
-              <h3 className="text-xs font-bold text-zinc-400">{group.title}</h3>
-              <div className={cn("grid gap-2", group.types.length > 1 && "grid-cols-2")}>
-                {group.types.map((type) => {
-                  const action = ACTIONS[type];
-                  const exp = Math.round(action.exp * nextMultiplier);
-                  return (
-                    <motion.button
-                      key={type}
-                      type="button"
-                      whileTap={{ scale: 0.92 }}
-                      onClick={() => {
-                        soundManager.play("click");
-                        recordProgress(type);
-                      }}
-                      className={cn(
-                        "flex flex-col items-center justify-center rounded-xl bg-gradient-to-br px-2 py-3 font-black shadow-lg ring-1 ring-white/10 transition hover:brightness-110",
-                        BUTTON_COLORS[type],
-                        combo.isFever && "ring-2 ring-yellow-300 shadow-[0_0_18px_rgba(250,204,21,0.5)]",
-                      )}
-                    >
-                      <span className="text-2xl leading-none" aria-hidden>
-                        {action.emoji}
-                      </span>
-                      <span className="mt-1 whitespace-nowrap text-sm sm:text-lg">{action.label}</span>
-                      <span
+      {isManga && (
+        <details className="group rounded-lg border border-white/10 p-3">
+          <summary className="cursor-pointer text-xs font-bold text-zinc-400">
+            ほかの記録（ページに関係なく EXP・コンボだけ）
+          </summary>
+          <div className="mt-3 flex flex-col gap-4">
+            {ACTION_GROUPS.map((group) => (
+              <div key={group.title} className="flex flex-col gap-2">
+                <h3 className="text-xs font-bold text-zinc-400">{group.title}</h3>
+                <div className={cn("grid gap-2", group.types.length > 1 && "grid-cols-2")}>
+                  {group.types.map((type) => {
+                    const action = ACTIONS[type];
+                    const exp = Math.round(action.exp * nextMultiplier);
+                    return (
+                      <motion.button
+                        key={type}
+                        type="button"
+                        whileTap={{ scale: 0.92 }}
+                        onClick={() => {
+                          soundManager.play("click");
+                          recordProgress(type);
+                        }}
                         className={cn(
-                          "text-xs font-bold",
-                          nextMultiplier > 1 ? "text-yellow-200" : "text-white/80",
+                          "flex flex-col items-center justify-center rounded-xl bg-gradient-to-br px-2 py-3 font-black shadow-lg ring-1 ring-white/10 transition hover:brightness-110",
+                          BUTTON_COLORS[type],
+                          combo.isFever && "ring-2 ring-yellow-300 shadow-[0_0_18px_rgba(250,204,21,0.5)]",
                         )}
                       >
-                        +{exp.toLocaleString()} EXP{nextMultiplier > 1 && ` (${nextMultiplier.toFixed(1)}x)`}
-                      </span>
-                    </motion.button>
-                  );
-                })}
+                        <span className="text-2xl leading-none" aria-hidden>
+                          {action.emoji}
+                        </span>
+                        <span className="mt-1 whitespace-nowrap text-sm sm:text-lg">{action.label}</span>
+                        <span
+                          className={cn(
+                            "text-xs font-bold",
+                            nextMultiplier > 1 ? "text-yellow-200" : "text-white/80",
+                          )}
+                        >
+                          +{exp.toLocaleString()} EXP{nextMultiplier > 1 && ` (${nextMultiplier.toFixed(1)}x)`}
+                        </span>
+                      </motion.button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </details>
+            ))}
+          </div>
+        </details>
+      )}
     </section>
   );
 }

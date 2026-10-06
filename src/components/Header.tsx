@@ -5,10 +5,11 @@ import { BarChart3, LayoutDashboard, Maximize, Minimize, Music, Settings, Volume
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import ProjectDialog, { PROJECT_TYPE_LABEL } from "@/components/ProjectDialog";
 import SettingsDialog from "@/components/SettingsDialog";
 import { useNow } from "@/lib/clock";
 import { cn } from "@/lib/utils";
-import { getEffectiveStreak, toDateString, useAppStore } from "@/store/useAppStore";
+import { getEffectiveStreak, toDateString, useActiveProject, useAppStore } from "@/store/useAppStore";
 
 export default function Header() {
   const now = useNow(60_000);
@@ -16,10 +17,14 @@ export default function Header() {
   const combo = useAppStore((s) => s.combo);
   const isBgmOn = useAppStore((s) => s.isBgmOn);
   const setBgmOn = useAppStore((s) => s.setBgmOn);
+  const shurabaMode = useAppStore((s) => s.shurabaMode);
+  const updateSettings = useAppStore((s) => s.updateSettings);
 
   const streak = getEffectiveStreak(progress, toDateString(new Date(now)));
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isProjectOpen, setIsProjectOpen] = useState(false);
+  const project = useActiveProject();
   const pathname = usePathname();
   const onStats = pathname === "/stats";
 
@@ -38,12 +43,20 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-zinc-950/85 backdrop-blur">
       <div className="mx-auto flex max-w-[1600px] items-center gap-1.5 px-4 py-3 sm:gap-3">
-        <h1 className="mr-auto min-w-0 truncate text-sm font-black tracking-tight sm:text-xl">
+        <h1 className="shrink-0 text-sm font-black tracking-tight sm:text-xl">
           進捗ブースター
-          <span className="ml-2 hidden text-xs font-bold text-fuchsia-400 sm:inline">
-            Syuraba Booster
-          </span>
+          <span className="ml-2 hidden text-xs font-bold text-fuchsia-400 xl:inline">Syuraba Booster</span>
         </h1>
+
+        <button
+          type="button"
+          onClick={() => setIsProjectOpen(true)}
+          title="プロジェクトの切り替え・新規作成・JSON の保存と読み込み"
+          className="mr-auto flex min-w-0 items-center gap-1.5 rounded-full bg-zinc-800 px-3 py-1 text-sm font-bold text-zinc-200 hover:bg-zinc-700"
+        >
+          <span className="shrink-0">{PROJECT_TYPE_LABEL[project.type].split(" ")[0]}</span>
+          <span className="truncate">{project.name}</span>
+        </button>
 
         <Link
           href={onStats ? "/" : "/stats"}
@@ -75,6 +88,21 @@ export default function Header() {
         <span className="whitespace-nowrap text-sm font-bold tabular-nums sm:text-base">
           🪙 {progress.coins.toLocaleString()}
         </span>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={shurabaMode}
+          aria-label="修羅場モード"
+          title={shurabaMode ? "修羅場モード ON（ZONE の回数制限なし）" : "修羅場モード OFF（ZONE は1日の上限まで）"}
+          onClick={() => updateSettings({ shurabaMode: !shurabaMode })}
+          className={cn(
+            "flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-sm font-bold transition sm:px-3",
+            shurabaMode ? "bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.6)]" : "bg-zinc-800 text-zinc-400",
+          )}
+        >
+          🔥<span className="hidden lg:inline">修羅場</span>
+        </button>
 
         <button
           type="button"
@@ -113,6 +141,7 @@ export default function Header() {
         </button>
       </div>
       {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}
+      {isProjectOpen && <ProjectDialog onClose={() => setIsProjectOpen(false)} />}
     </header>
   );
 }

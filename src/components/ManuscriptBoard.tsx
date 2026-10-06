@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { soundManager } from "@/lib/soundManager";
 import { STAGES, getBoardStats, isPageComplete } from "@/lib/stages";
 import { cn } from "@/lib/utils";
-import { useAppStore } from "@/store/useAppStore";
+import { useActiveProject, useAppStore } from "@/store/useAppStore";
 import type { StageId } from "@/types";
 
 function formatDay(ms: number): string {
@@ -18,7 +18,7 @@ function formatDay(ms: number): string {
  * 押すとその日付で完了を記録し、演出が出る。完了済みを押すと取り消せる。
  */
 export default function ManuscriptBoard() {
-  const manuscript = useAppStore((s) => s.manuscript);
+  const { manuscript } = useActiveProject();
   const completeStage = useAppStore((s) => s.completeStage);
   const undoStage = useAppStore((s) => s.undoStage);
   const scrollRef = useRef<HTMLDivElement>(null);

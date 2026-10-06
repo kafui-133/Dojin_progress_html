@@ -34,6 +34,8 @@ export interface DailyStats {
   exp: number;
   strokes: number;
   strokeMs: number;
+  strokeLength: number;     // 線の長さ（px）
+  zones: number;            // ZONE に入った回数
   undos: number;
   typedKeys: number;
   keyOps: number;
@@ -90,6 +92,7 @@ export interface StrokeResult {
   inZone: boolean;
   enteredZone: boolean;     // この線でゾーンに入った
   milestone: boolean;       // 区切りの本数（50本ごと）に達した
+  zoneBlocked: boolean;     // 勢いは MAX だが、1日の上限・休憩中のため ZONE に入らなかった
   lengthMilestoneM: number | null; // 区切りの長さ（5m ごと）に達したらその長さ
   durationMs: number;
   lengthPx: number;
@@ -130,6 +133,37 @@ export interface AppSettings {
   geminiMaleCharacter: string;     // Gemini の男性キャラクター
   voicevoxFemaleStyle: number;     // VOICEVOX の女性側の話者 ID
   voicevoxMaleStyle: number;       // VOICEVOX の男性側の話者 ID
+  restBgmId: string;               // 休憩中に流すゆったりした BGM
+  zoneDailyLimit: number;          // 1日に ZONE に入れる回数（修羅場モードでは無制限）
+  shurabaMode: boolean;            // 修羅場モード（ZONE の上限なし）
+}
+
+export type ProjectType = "manga" | "illustration";
+
+/** 原稿・イラストなど、作品ごとの記録 */
+export interface Project {
+  id: string;
+  name: string;
+  type: ProjectType;
+  createdAt: number;
+  /** 漫画: 総ページ数・入稿締め切り（イラストでは締め切りのみ任意） */
+  targetPages: number;
+  deadline: string;
+  /** 漫画: ページ × 工程の記録（イラストでは空） */
+  manuscript: Manuscript;
+  /** 日ごとの記録（YYYY-MM-DD → 記録） */
+  dailyStats: Record<string, DailyStats>;
+}
+
+export type PomodoroMode = "focus" | "break";
+
+/** ポモドーロタイマー（ページを移動・再読込しても続くよう保存する） */
+export interface PomodoroState {
+  mode: PomodoroMode;
+  /** 動いているときの終了時刻（ms）。止まっていれば null */
+  endAt: number | null;
+  /** 止まっているときの残り時間（ms） */
+  pausedRemaining: number;
 }
 
 /** 読み上げの声: ブラウザ標準 / Gemini の自然な声 / VOICEVOX */

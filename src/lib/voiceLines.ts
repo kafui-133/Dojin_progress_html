@@ -13,6 +13,8 @@ export const LINES = {
   unstoppable: "筆が止まらない！！",
   undoMaster: "こだわりの鬼！",
   typing: "セリフが止まらない！",
+  restStart: "休憩の時間です。少し休みましょう",
+  restEnd: "休憩おわり！また描いていきましょう",
 } as const;
 
 export const strokeMilestoneLine = (strokes: number) => `${strokes}本突破！`;
@@ -38,6 +40,8 @@ export function getAllVoiceLines(): string[] {
     LINES.unstoppable,
     LINES.undoMaster,
     LINES.typing,
+    LINES.restStart,
+    LINES.restEnd,
     ...range(PREPARED_STROKES).map(strokeMilestoneLine),
     ...range(PREPARED_METERS).map(lengthMilestoneLine),
   ];

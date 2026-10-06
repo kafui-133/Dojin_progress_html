@@ -5,7 +5,7 @@ import { Check, Pencil } from "lucide-react";
 import { useState } from "react";
 import { useNow } from "@/lib/clock";
 import { getBoardStats, pagesWithDataBeyond } from "@/lib/stages";
-import { MAX_PAGES, toDateString, useAppStore } from "@/store/useAppStore";
+import { MAX_PAGES, toDateString, useActiveProject, useAppStore } from "@/store/useAppStore";
 
 const STAGES = [
   { min: 0, label: "白紙の原稿", comment: "まずは1コマから！" },
@@ -157,15 +157,15 @@ function ManuscriptPage({ stage }: { stage: number }) {
 }
 
 function GoalEditor({ onDone }: { onDone: () => void }) {
-  const progress = useAppStore((s) => s.progress);
-  const manuscript = useAppStore((s) => s.manuscript);
+  const project = useActiveProject();
+  const { manuscript } = project;
   const setGoal = useAppStore((s) => s.setGoal);
   // ページ数は入力途中（"12" を打つ途中の "1" など）で原稿を減らさないよう、完了を押したときに反映する
-  const [pagesDraft, setPagesDraft] = useState(String(progress.targetPages));
-  const [deadlineDraft, setDeadlineDraft] = useState(progress.deadline);
+  const [pagesDraft, setPagesDraft] = useState(String(project.targetPages));
+  const [deadlineDraft, setDeadlineDraft] = useState(project.deadline);
 
   const apply = () => {
-    const pages = Math.min(MAX_PAGES, Math.max(1, Math.floor(Number(pagesDraft) || progress.targetPages)));
+    const pages = Math.min(MAX_PAGES, Math.max(1, Math.floor(Number(pagesDraft) || project.targetPages)));
     const lost = pagesWithDataBeyond(manuscript.pages, pages);
     if (lost > 0 && !confirm(`${pages + 1}ページ目以降の ${lost} ページ分の完了記録が消えます。よろしいですか？`)) return;
     setGoal({ targetPages: pages, deadline: deadlineDraft });
@@ -203,8 +203,8 @@ function GoalEditor({ onDone }: { onDone: () => void }) {
 
 export default function VisualStage() {
   const now = useNow(60_000);
-  const progress = useAppStore((s) => s.progress);
-  const manuscript = useAppStore((s) => s.manuscript);
+  const project = useActiveProject();
+  const { manuscript } = project;
   const [isEditing, setIsEditing] = useState(false);
 
   const board = getBoardStats(manuscript);
@@ -213,7 +213,7 @@ export default function VisualStage() {
   const stage = STAGES[stageIndex];
   const next = STAGES[stageIndex + 1];
   const remainingToNext = next ? Math.max(0, Math.ceil((board.total * next.min) / 100) - board.done) : 0;
-  const days = daysUntil(progress.deadline, toDateString(new Date(now)));
+  const days = daysUntil(project.deadline, toDateString(new Date(now)));
   const remainingTasks = board.total - board.done;
   // 今日を含めて締め切り日までに、1日あたりいくつ工程を終わらせればよいか
   const pacePerDay = days !== null && days >= 0 && remainingTasks > 0 ? Math.ceil(remainingTasks / (days + 1)) : null;
@@ -250,7 +250,7 @@ export default function VisualStage() {
           <span>
             進捗 <span className="text-2xl tabular-nums">{Math.floor(percent)}</span>%
             <span className="ml-2 text-zinc-400">
-              {board.pagesComplete} / {progress.targetPages} ページ完成
+              {board.pagesComplete} / {project.targetPages} ページ完成
             </span>
           </span>
           <span className={days !== null && days <= 3 ? "text-red-400" : undefined}>

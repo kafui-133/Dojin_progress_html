@@ -580,6 +580,9 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const isBgmOn = useAppStore((s) => s.isBgmOn);
   const bgmNormalId = useAppStore((s) => s.bgmNormalId);
   const bgmFeverId = useAppStore((s) => s.bgmFeverId);
+  const restBgmId = useAppStore((s) => s.restBgmId);
+  const zoneDailyLimit = useAppStore((s) => s.zoneDailyLimit);
+  const shurabaMode = useAppStore((s) => s.shurabaMode);
   const voiceMode = useAppStore((s) => s.voiceMode);
   const ttsEngine = useAppStore((s) => s.ttsEngine);
   const isStrokeSoundOn = useAppStore((s) => s.isStrokeSoundOn);
@@ -626,6 +629,11 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             label="フィーバー・ゾーン中の曲"
             value={bgmFeverId}
             onChange={(id) => updateSettings({ bgmFeverId: id })}
+          />
+          <TrackSelect
+            label="休憩中の曲（ポモドーロの休憩で、自動でこの曲になります）"
+            value={restBgmId}
+            onChange={(id) => updateSettings({ restBgmId: id })}
           />
           <CustomTrackList />
         </Section>
@@ -687,6 +695,28 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
               </p>
             </>
           )}
+        </Section>
+
+        <Section title="⚡ ZONE（勢い MAX）">
+          <label className="flex items-center justify-between gap-3 text-sm">
+            1日に ZONE に入れる回数
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={zoneDailyLimit}
+              onChange={(e) => updateSettings({ zoneDailyLimit: Math.min(50, Math.max(1, Number(e.target.value) || 1)) })}
+              className="w-20 rounded-lg bg-zinc-800 px-3 py-1.5 text-right tabular-nums"
+            />
+          </label>
+          <Switch
+            label="🔥 修羅場モード（ZONE の回数制限なし）"
+            checked={shurabaMode}
+            onChange={(on) => updateSettings({ shurabaMode: on })}
+          />
+          <p className="text-xs text-zinc-500">
+            ZONE に入りすぎると疲れるので、普段は1日の回数を決めておき、締め切り前だけ修羅場モードにするのがおすすめです。休憩中は ZONE に入りません。
+          </p>
         </Section>
 
         <Section title="🔔 効果音">

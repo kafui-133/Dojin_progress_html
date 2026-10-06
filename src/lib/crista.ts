@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { create } from "zustand";
+import { now as clockNow } from "@/lib/clock";
 import { soundManager } from "@/lib/soundManager";
-import { useAppStore } from "@/store/useAppStore";
+import { isResting, useAppStore } from "@/store/useAppStore";
 
 /** bridge/index.mjs と同じポート */
 export const BRIDGE_URL = "ws://127.0.0.1:38917";
@@ -19,18 +21,26 @@ export type BridgeEvent =
 
 export type BridgeStatus = "off" | "connecting" | "connected";
 
+/** ブリッジの接続状態（接続はどのページでも GlobalRuntime が保つ） */
+export const useBridgeStatus = create<{ status: BridgeStatus; mode: BridgeMode | null }>()(() => ({
+  status: "off",
+  mode: null,
+}));
+
 /** ブリッジ（またはデバッグツール）からのイベントを進捗に反映する */
 export function handleBridgeEvent(event: BridgeEvent): void {
   const store = useAppStore.getState();
+  // 休憩中は記録だけして、効果音は鳴らさない
+  const sound = store.isStrokeSoundOn && !isResting(store.pomodoro, clockNow());
   if (event.type === "stroke") {
     const result = store.recordStroke({ durationMs: event.durationMs });
-    if (store.isStrokeSoundOn) soundManager.playStroke(result.rush);
+    if (sound) soundManager.playStroke(result.rush);
   } else if (event.type === "undo") {
     store.recordUndo();
-    if (store.isStrokeSoundOn) soundManager.play("undo");
+    if (sound) soundManager.play("undo");
   } else if (event.type === "typing") {
     const result = store.recordTyping(event.keys);
-    if (store.isStrokeSoundOn) soundManager.playStroke(Math.min(11, Math.ceil(result.keys / 4)));
+    if (sound) soundManager.playStroke(Math.min(11, Math.ceil(result.keys / 4)));
   } else if (event.type === "keys") {
     store.recordKeyOps(event.count);
   } else if (event.type === "save") {

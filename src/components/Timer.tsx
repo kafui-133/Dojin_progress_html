@@ -1,18 +1,12 @@
 "use client";
 
 import { Coffee, Pause, Play, RotateCcw, Timer as TimerIcon } from "lucide-react";
-import { useEffect, useState } from "react";
-import { vibrate } from "@/lib/effects";
-import { soundManager } from "@/lib/soundManager";
+import { useNow } from "@/lib/clock";
 import { cn } from "@/lib/utils";
-import { EMPTY_DAY, toDateString, useAppStore } from "@/store/useAppStore";
+import { POMODORO_DURATION, getPomodoroRemaining, toDateString, useAppStore } from "@/store/useAppStore";
+import type { PomodoroMode as Mode } from "@/types";
 
-type Mode = "focus" | "break";
-
-const DURATION_MS: Record<Mode, number> = {
-  focus: 25 * 60_000,
-  break: 5 * 60_000,
-};
+const DURATION_MS = POMODORO_DURATION;
 
 const MODE_LABEL: Record<Mode, string> = {
   focus: "作業 25分",
@@ -27,58 +21,29 @@ function format(ms: number): string {
   return `${String(Math.floor(totalSec / 60)).padStart(2, "0")}:${String(totalSec % 60).padStart(2, "0")}`;
 }
 
-/** 25分ポモドーロタイマー。終わると音で知らせ、作業⇄休憩を切り替える */
+/**
+ * 25分ポモドーロタイマー（表示と操作）。時間の管理はストアにあり、
+ * 終わったときの切り替え・BGM・読み上げは GlobalRuntime が行うので、別のページに移っても続く。
+ */
 export default function Timer() {
-  const [mode, setMode] = useState<Mode>("focus");
-  const [endAt, setEndAt] = useState<number | null>(null);
-  const [pausedRemaining, setPausedRemaining] = useState(DURATION_MS.focus);
-  const [tick, setTick] = useState(() => Date.now());
-  const recordPomodoro = useAppStore((s) => s.recordPomodoro);
-  const completedCount = useAppStore(
-    (s) => (s.dailyStats[toDateString(new Date(tick))] ?? EMPTY_DAY).pomodoros,
-  );
+  const now = useNow(250);
+  const pomodoro = useAppStore((s) => s.pomodoro);
+  const startTimer = useAppStore((s) => s.startTimer);
+  const pauseTimer = useAppStore((s) => s.pauseTimer);
+  const resetTimer = useAppStore((s) => s.resetTimer);
+  const setTimerMode = useAppStore((s) => s.setTimerMode);
+  const completedCount = useAppStore((s) => {
+    const today = toDateString(new Date(now));
+    return s.projects.reduce((sum, p) => sum + (p.dailyStats[today]?.pomodoros ?? 0), 0);
+  });
 
-  const isRunning = endAt !== null;
-  const remaining = isRunning ? Math.max(0, endAt - tick) : pausedRemaining;
-
-  useEffect(() => {
-    if (endAt === null) return;
-    const id = setInterval(() => {
-      const t = Date.now();
-      if (t < endAt) {
-        setTick(t);
-        return;
-      }
-      soundManager.play("fanfare");
-      vibrate([200, 100, 200]);
-      const nextMode: Mode = mode === "focus" ? "break" : "focus";
-      if (mode === "focus") recordPomodoro();
-      setMode(nextMode);
-      setEndAt(null);
-      setPausedRemaining(DURATION_MS[nextMode]);
-    }, 250);
-    return () => clearInterval(id);
-  }, [endAt, mode, recordPomodoro]);
-
-  const start = () => {
-    const t = Date.now();
-    setTick(t);
-    setEndAt(t + pausedRemaining);
-  };
-  const pause = () => {
-    if (endAt === null) return;
-    setPausedRemaining(Math.max(0, endAt - Date.now()));
-    setEndAt(null);
-  };
-  const reset = () => {
-    setEndAt(null);
-    setPausedRemaining(DURATION_MS[mode]);
-  };
-  const switchMode = (next: Mode) => {
-    setMode(next);
-    setEndAt(null);
-    setPausedRemaining(DURATION_MS[next]);
-  };
+  const { mode } = pomodoro;
+  const isRunning = pomodoro.endAt !== null;
+  const remaining = getPomodoroRemaining(pomodoro, now);
+  const start = () => startTimer();
+  const pause = () => pauseTimer();
+  const reset = () => resetTimer();
+  const switchMode = (next: Mode) => setTimerMode(next);
 
   const ratio = remaining / DURATION_MS[mode];
   const color = mode === "focus" ? "#e879f9" : "#34d399";

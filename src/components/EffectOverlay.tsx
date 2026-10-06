@@ -3,7 +3,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useCustomTracks } from "@/lib/customTracks";
-import { useNow } from "@/lib/clock";
+import { now as clockNow, useNow } from "@/lib/clock";
 import { burstConfetti, celebrateGoal, vibrate } from "@/lib/effects";
 import { soundManager } from "@/lib/soundManager";
 import { speak, voiceOptions } from "@/lib/voice";
@@ -14,6 +14,7 @@ import {
   ZONE_MULTIPLIER,
   isFlowBgmActive,
   isInZone,
+  isResting,
   useAppStore,
 } from "@/store/useAppStore";
 import type { ProgressActionResult, StrokeResult, TypingResult, UndoResult } from "@/types";
@@ -139,6 +140,8 @@ export default function EffectOverlay() {
   const isComboBgm = useAppStore((s) => s.combo.comboCount >= BGM_START_COMBO);
   const flow = useAppStore((s) => s.flow);
   const isBgmOn = useAppStore((s) => s.isBgmOn);
+  const restBgmId = useAppStore((s) => s.restBgmId);
+  const resting = useAppStore((s) => isResting(s.pomodoro, now));
   const bgmNormalId = useAppStore((s) => s.bgmNormalId);
   const bgmFeverId = useAppStore((s) => s.bgmFeverId);
   const [effect, setEffect] = useState<OverlayEffect | null>(null);
@@ -192,6 +195,8 @@ export default function EffectOverlay() {
     };
 
     const unsubscribe = useAppStore.subscribe((state, prev) => {
+      // 休憩中は演出を止めて、気持ちを落ち着かせる（記録はされる）
+      if (isResting(state.pomodoro, clockNow())) return;
       if (state.lastAction && state.lastAction !== prev.lastAction) {
         play(fromAction(state.lastAction));
       } else {
@@ -216,10 +221,14 @@ export default function EffectOverlay() {
 
   useEffect(() => {
     const active = isBgmOn && (isComboBgm || isFlowBgm);
-    soundManager.setBgm(active ? (isFever || inZone ? bgmFeverId : bgmNormalId) : null);
-  }, [isBgmOn, isComboBgm, isFlowBgm, isFever, inZone, bgmNormalId, bgmFeverId]);
+    // 休憩中は、コンボや勢いに関係なくゆったりした曲に切り替える
+    if (resting) soundManager.setBgm(isBgmOn ? restBgmId : null);
+    else soundManager.setBgm(active ? (isFever || inZone ? bgmFeverId : bgmNormalId) : null);
+  }, [isBgmOn, isComboBgm, isFlowBgm, isFever, inZone, bgmNormalId, bgmFeverId, resting, restBgmId]);
 
-  const glow = isFever
+  const glow = resting
+    ? null
+    : isFever
     ? "shadow-[inset_0_0_80px_20px_rgba(255,210,63,0.45)]"
     : inZone
       ? "shadow-[inset_0_0_90px_24px_rgba(217,70,239,0.45)]"

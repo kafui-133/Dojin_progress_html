@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DotGothic16, Geist, Geist_Mono } from "next/font/google";
+import GlobalRuntime from "@/components/GlobalRuntime";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,7 +31,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="ja"
       className={`${geistSans.variable} ${geistMono.variable} ${dotGothic.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <GlobalRuntime />
+      </body>
     </html>
   );
 }

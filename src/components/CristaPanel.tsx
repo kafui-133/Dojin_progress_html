@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNow } from "@/lib/clock";
-import { type BridgeMode, type BridgeStatus, useCristaBridge } from "@/lib/crista";
+import { type BridgeMode, type BridgeStatus, useBridgeStatus } from "@/lib/crista";
 import { cn } from "@/lib/utils";
 import {
   RUSH_GAP_MS,
@@ -12,74 +12,20 @@ import {
   formatDuration,
   formatLength,
   getFlowLevel,
+  getZonesToday,
   isInZone,
+  isResting,
+  toDateString,
   useAppStore,
 } from "@/store/useAppStore";
-import type { StrokeResult } from "@/types";
+import { GROW_MS, type InkBalloon, type InkItem, RETRACT_MS, usePanelStore } from "@/store/usePanelStore";
 
 // ---- ライブ集中線キャンバス ----
-
-interface InkLine {
-  kind: "line";
-  angle: number;
-  /** 線の先端が届く位置（中心からの距離 / 短辺の半分） */
-  reach: number;
-  width: number;
-  color: string;
-  lengthPx: number;
-  bornAt: number;
-  /** やり直しで巻き戻し中なら、その開始時刻 */
-  removedAt?: number;
-}
-
-/** セリフ入力で置かれる吹き出し */
-interface InkBalloon {
-  kind: "balloon";
-  /** 中心の位置（キャンバスに対する割合） */
-  x: number;
-  y: number;
-  /** 大きさ（短辺の半分に対する割合）。打った数が多いほど大きい */
-  size: number;
-  /** 中の文字の行数 */
-  rows: number;
-  bornAt: number;
-  removedAt?: number;
-}
-
-type InkItem = InkLine | InkBalloon;
 
 interface Popup {
   key: string;
   text: string;
   tone: "normal" | "zone" | "undo" | "typing";
-}
-
-const GROW_MS = 220;
-const RETRACT_MS = 260;
-const MAX_LINES = 400;
-
-function lineFromStroke(stroke: StrokeResult, bornAt: number): InkLine {
-  const reach = 0.85 - Math.min(0.6, stroke.lengthPx / 1500) + (Math.random() - 0.5) * 0.16;
-  return {
-    kind: "line",
-    angle: Math.random() * Math.PI * 2,
-    reach: Math.min(0.9, Math.max(0.18, reach)),
-    width: 2 + Math.min(7, stroke.durationMs / 120),
-    color: stroke.inZone ? (Math.random() < 0.5 ? "#f59e0b" : "#d946ef") : "#111111",
-    lengthPx: stroke.lengthPx,
-    bornAt,
-  };
-}
-
-function balloonFromTyping(keys: number, bornAt: number): InkBalloon {
-  return {
-    kind: "balloon",
-    x: 0.2 + Math.random() * 0.6,
-    y: 0.2 + Math.random() * 0.6,
-    size: 0.12 + Math.min(0.18, keys * 0.006),
-    rows: Math.min(4, 1 + Math.floor(keys / 10)),
-    bornAt,
-  };
 }
 
 /** 生まれてからの伸び具合と、やり直しで消えていく具合を合わせた 0〜1 */
@@ -191,13 +137,13 @@ function drawLines(canvas: HTMLCanvasElement, items: InkItem[], now: number): bo
 
 function LiveInk() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const linesRef = useRef<InkItem[]>([]);
   const frameRef = useRef<number | null>(null);
-  const [lineCount, setLineCount] = useState(0);
-  const [panelLength, setPanelLength] = useState(0);
-  const [panelUndos, setPanelUndos] = useState(0);
-  const [panelTyped, setPanelTyped] = useState(0);
-  const [completedPanels, setCompletedPanels] = useState(0);
+  // 中身はストアに保存されている（ページを移動しても残り、日付が変わったら新しいコマ）
+  const lineCount = usePanelStore((s) => s.lineCount);
+  const panelLength = usePanelStore((s) => s.lengthPx);
+  const panelUndos = usePanelStore((s) => s.undos);
+  const panelTyped = usePanelStore((s) => s.typed);
+  const completedPanels = usePanelStore((s) => s.completedPanels);
   const [popup, setPopup] = useState<Popup | null>(null);
 
   useEffect(() => {
@@ -206,12 +152,7 @@ function LiveInk() {
 
     const render = () => {
       frameRef.current = null;
-      const t = performance.now();
-      // 巻き戻しが終わった線を取り除く
-      linesRef.current = linesRef.current.filter(
-        (line) => line.removedAt === undefined || t - line.removedAt < RETRACT_MS,
-      );
-      if (drawLines(canvas, linesRef.current, t)) {
+      if (drawLines(canvas, usePanelStore.getState().items, Date.now())) {
         frameRef.current = requestAnimationFrame(render);
       }
     };
@@ -229,64 +170,30 @@ function LiveInk() {
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
 
-    const resetPanel = () => {
-      linesRef.current = [];
-      setLineCount(0);
-      setPanelLength(0);
-      setPanelUndos(0);
-      setPanelTyped(0);
-      requestRender();
-    };
+    const unsubscribePanel = usePanelStore.subscribe((state, prev) => {
+      if (state.items !== prev.items) requestRender();
+    });
 
-    let clearTimer: ReturnType<typeof setTimeout> | undefined;
+    // 線ごとの +EXP の表示（その場かぎりなので保存しない）
     const unsubscribe = useAppStore.subscribe((state, prev) => {
       const stroke = state.lastStroke;
       if (stroke && stroke !== prev.lastStroke) {
-        const lines = [...linesRef.current, lineFromStroke(stroke, performance.now())];
-        linesRef.current = lines.slice(-MAX_LINES);
-        setLineCount((n) => n + 1);
-        setPanelLength((len) => len + stroke.lengthPx);
         setPopup({ key: `s${stroke.id}`, text: `+${stroke.expGained}`, tone: stroke.inZone ? "zone" : "normal" });
-        requestRender();
       }
       const undo = state.lastUndo;
       if (undo && undo !== prev.lastUndo) {
-        // 最後に描いた線・置いた吹き出しを巻き戻す
-        const target = linesRef.current.findLast((item) => item.removedAt === undefined);
-        if (target) {
-          target.removedAt = performance.now();
-          if (target.kind === "line") {
-            setLineCount((n) => Math.max(0, n - 1));
-            setPanelLength((len) => Math.max(0, len - target.lengthPx));
-          }
-        }
-        setPanelUndos((n) => n + 1);
         setPopup({ key: `u${undo.id}`, text: `↩ こだわり +${undo.expGained}`, tone: "undo" });
-        requestRender();
       }
       const typing = state.lastTyping;
       if (typing && typing !== prev.lastTyping) {
-        linesRef.current = [...linesRef.current, balloonFromTyping(typing.keys, performance.now())].slice(-MAX_LINES);
-        setPanelTyped((n) => n + typing.keys);
         setPopup({ key: `t${typing.id}`, text: `💬 +${typing.expGained}`, tone: "typing" });
-        requestRender();
-      }
-      if (state.lastAction?.type === "save" && state.lastAction !== prev.lastAction) {
-        // 保存したらこのコマは完成。演出のあと新しいコマにする
-        setCompletedPanels((n) => n + 1);
-        clearTimeout(clearTimer);
-        clearTimer = setTimeout(resetPanel, 1200);
-      }
-      if (!state.lastStroke && prev.lastStroke) {
-        resetPanel();
-        setCompletedPanels(0);
       }
     });
 
     return () => {
       unsubscribe();
+      unsubscribePanel();
       observer.disconnect();
-      clearTimeout(clearTimer);
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     };
   }, []);
@@ -358,6 +265,10 @@ function FlowGauge() {
   const progress = useAppStore((s) => s.progress);
 
   const level = getFlowLevel(flow, now);
+  const zonesToday = useAppStore((s) => getZonesToday(s.projects, toDateString(new Date(now))));
+  const zoneDailyLimit = useAppStore((s) => s.zoneDailyLimit);
+  const shurabaMode = useAppStore((s) => s.shurabaMode);
+  const resting = useAppStore((s) => isResting(s.pomodoro, now));
   const zone = isInZone(flow, now);
   const rushAlive = flow.lastActivityAt > 0 && now - flow.lastActivityAt <= RUSH_GAP_MS;
 
@@ -425,6 +336,15 @@ function FlowGauge() {
           {zone ? "ZONE×2" : `${Math.floor(level)}%`}
         </span>
       </div>
+      <p className="text-right text-xs text-zinc-400">
+        {resting
+          ? "☕ 休憩中は ZONE に入りません"
+          : shurabaMode
+            ? `🔥 修羅場モード（今日の ZONE ${zonesToday}回・上限なし）`
+            : zonesToday >= zoneDailyLimit
+              ? `今日の ZONE は上限（${zoneDailyLimit}回）に達しました。ゆっくり描こう`
+              : `今日の ZONE ${zonesToday} / ${zoneDailyLimit}回`}
+      </p>
     </div>
   );
 }
@@ -448,7 +368,7 @@ export default function CristaPanel() {
   const setBridgeEnabled = useAppStore((s) => s.setBridgeEnabled);
   const isStrokeSoundOn = useAppStore((s) => s.isStrokeSoundOn);
   const setStrokeSoundOn = useAppStore((s) => s.setStrokeSoundOn);
-  const { status, mode } = useCristaBridge(isBridgeEnabled);
+  const { status, mode } = useBridgeStatus();
 
   return (
     <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
