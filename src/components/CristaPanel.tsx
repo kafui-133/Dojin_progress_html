@@ -5,6 +5,7 @@ import { Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNow } from "@/lib/clock";
 import { type BridgeMode, type BridgeStatus, useBridgeStatus } from "@/lib/crista";
+import { IS_DESKTOP } from "@/lib/edition";
 import { cn } from "@/lib/utils";
 import {
   RUSH_GAP_MS,
@@ -408,12 +409,17 @@ export default function CristaPanel() {
         </button>
       </div>
 
-      {status === "connecting" && (
-        <p className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-200">
-          ブリッジが起動していません。ターミナルで <code className="font-mono font-bold">npm run bridge</code>{" "}
-          を実行してください（クリスタなしで試すなら <code className="font-mono font-bold">npm run bridge:sim</code>）。
-        </p>
-      )}
+      {status === "connecting" &&
+        (IS_DESKTOP ? (
+          <p className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-200">
+            クリスタ連携の準備中です。しばらくたってもつながらないときは、アプリを一度終了して起動し直してください。
+          </p>
+        ) : (
+          <p className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-200">
+            ブリッジが起動していません。ターミナルで <code className="font-mono font-bold">npm run bridge</code>{" "}
+            を実行してください（クリスタなしで試すなら <code className="font-mono font-bold">npm run bridge:sim</code>）。
+          </p>
+        ))}
       {status === "off" && (
         <p className="text-sm text-zinc-400">
           ON にすると、クリスタで線を引く・セリフを打つ・キーを押す・保存するたびにここが反応します。線の長さはペンが触れていた時間で決まります。

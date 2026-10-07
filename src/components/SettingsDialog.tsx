@@ -4,6 +4,7 @@ import { ExternalLink, Loader2, Play, Plus, RefreshCw, Sparkles, Square, Trash2,
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCustomTracks } from "@/lib/customTracks";
+import { GEMINI_ENABLED, IS_DESKTOP } from "@/lib/edition";
 import {
   API_KEY_PAGE,
   type CharacterGender,
@@ -167,7 +168,9 @@ function CustomTrackList() {
         />
       </div>
       {tracks.length === 0 ? (
-        <p className="text-xs text-zinc-500">追加した曲はこのブラウザに保存され、上の一覧から選べるようになります。</p>
+        <p className="text-xs text-zinc-500">
+          追加した曲は{IS_DESKTOP ? "この PC（アプリの中）" : "このブラウザ"}に保存され、上の一覧から選べるようになります。
+        </p>
       ) : (
         <ul className="flex flex-col gap-1">
           {tracks.map((track) => (
@@ -584,7 +587,9 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const zoneDailyLimit = useAppStore((s) => s.zoneDailyLimit);
   const shurabaMode = useAppStore((s) => s.shurabaMode);
   const voiceMode = useAppStore((s) => s.voiceMode);
-  const ttsEngine = useAppStore((s) => s.ttsEngine);
+  const savedEngine = useAppStore((s) => s.ttsEngine);
+  // 配布版では Gemini を選べない（読み込んだデータが Gemini のままならブラウザ標準として扱う）
+  const ttsEngine = savedEngine === "gemini" && !GEMINI_ENABLED ? "browser" : savedEngine;
   const isStrokeSoundOn = useAppStore((s) => s.isStrokeSoundOn);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const voices = useJapaneseVoices();
@@ -655,14 +660,16 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             ))}
           </div>
           {voiceMode !== "off" && (
-            <div className="grid grid-cols-3 gap-1 rounded-lg bg-zinc-800 p-1 text-sm">
+            <div className={cn("grid gap-1 rounded-lg bg-zinc-800 p-1 text-sm", GEMINI_ENABLED ? "grid-cols-3" : "grid-cols-2")}>
               {(
                 [
                   ["browser", "ブラウザ標準"],
                   ["gemini", "Gemini"],
                   ["voicevox", "VOICEVOX"],
                 ] as const
-              ).map(([engine, label]) => (
+              )
+                .filter(([engine]) => engine !== "gemini" || GEMINI_ENABLED)
+                .map(([engine, label]) => (
                 <button
                   key={engine}
                   type="button"
@@ -677,14 +684,16 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
               ))}
             </div>
           )}
-          {voiceMode !== "off" && ttsEngine === "gemini" && <GeminiVoiceSettings />}
+          {voiceMode !== "off" && GEMINI_ENABLED && ttsEngine === "gemini" && <GeminiVoiceSettings />}
           {voiceMode !== "off" && ttsEngine === "voicevox" && <VoicevoxSettings />}
           {voiceMode !== "off" && ttsEngine !== "browser" && (
             <p className="text-xs font-bold text-zinc-400">ブラウザ標準の声（準備できていないセリフ・つながらないときに使います）</p>
           )}
           {voices.length === 0 ? (
             <p className="rounded-lg bg-amber-500/10 p-3 text-xs text-amber-200">
-              このブラウザで使える日本語の声が見つかりません。Windows の Edge か Chrome で開いてください。
+              {IS_DESKTOP
+                ? "日本語の声が見つかりません。Windows の「設定 → 時刻と言語 → 音声」で日本語の音声を追加するか、VOICEVOX を使ってください。"
+                : "このブラウザで使える日本語の声が見つかりません。Windows の Edge か Chrome で開いてください。"}
             </p>
           ) : (
             <>

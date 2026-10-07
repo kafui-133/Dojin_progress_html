@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // デスクトップアプリの書き出し先
+    "release/**",
+    "dist/**",
   ]),
 ]);
 

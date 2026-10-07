@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { ACTIONS } from "@/lib/actions";
 import { now as clockNow } from "@/lib/clock";
+import { IS_DESKTOP } from "@/lib/edition";
 import { DEFAULT_FEMALE_CHARACTER, DEFAULT_MALE_CHARACTER } from "@/lib/geminiTts";
 import { DEFAULT_BGM_FEVER, DEFAULT_BGM_NORMAL } from "@/lib/soundManager";
 import { PAGE_COMPLETE_LINE, STAGE_BY_ID, getBoardStats, isPageComplete, resizePages } from "@/lib/stages";
@@ -276,7 +277,8 @@ const initialProject = createProjectData({ name: "最初の原稿", type: "manga
 
 const initialSettings: AppSettings = {
   isBgmOn: true,
-  isBridgeEnabled: false,
+  // 配布版はブリッジを内蔵しているので最初から ON
+  isBridgeEnabled: IS_DESKTOP,
   isStrokeSoundOn: true,
   bgmNormalId: DEFAULT_BGM_NORMAL,
   bgmFeverId: DEFAULT_BGM_FEVER,

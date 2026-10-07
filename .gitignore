@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# desktop app (electron-builder)
+/release/
+/dist/
+
+# 自分の曲など、配布できない音源は入れない
+/public/sounds/*.mp3

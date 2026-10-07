@@ -1,5 +1,6 @@
 import { Howl } from "howler";
 import { useSyncExternalStore } from "react";
+import { GEMINI_ENABLED } from "@/lib/edition";
 import { geminiSource, getCharacter } from "@/lib/geminiTts";
 import { soundManager } from "@/lib/soundManager";
 import { type VoiceSource, generateShared, getCachedVoice } from "@/lib/ttsCache";
@@ -220,7 +221,8 @@ function speakWithBrowser(reading: string, gender: VoiceGender, options: SpeakOp
 
 /** 設定に合わせた、男女それぞれの外部の声（ブラウザ標準なら null） */
 export function voiceSources(settings: AppSettings): Record<VoiceGender, VoiceSource | null> {
-  if (settings.ttsEngine === "gemini") {
+  // 配布版では Gemini を使わない（読み込んだデータが Gemini のままでもブラウザ標準の声で読む）
+  if (settings.ttsEngine === "gemini" && GEMINI_ENABLED) {
     return {
       female: geminiSource(getCharacter(settings.geminiFemaleCharacter, "female")),
       male: geminiSource(getCharacter(settings.geminiMaleCharacter, "male")),
