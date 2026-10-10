@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNow } from "@/lib/clock";
 import { type BridgeMode, type BridgeStatus, useBridgeStatus } from "@/lib/crista";
 import { IS_DESKTOP } from "@/lib/edition";
+import { CSP_COLORS, CSP_STATE_LABEL, activeRatio, formatClock, inactiveMs } from "@/lib/cspUsage";
 import { cn } from "@/lib/utils";
 import {
   RUSH_GAP_MS,
@@ -13,6 +14,7 @@ import {
   formatDuration,
   formatLength,
   getFlowLevel,
+  EMPTY_CSP_DAY,
   getZonesToday,
   isInZone,
   isResting,
@@ -260,6 +262,70 @@ function LiveInk() {
 
 // ---- 勢いゲージ ----
 
+// ---- クリスタの使用時間（今日） ----
+
+function CspUsageToday() {
+  const cspState = useBridgeStatus((s) => s.cspState);
+  // ブリッジは実際の時刻で送ってくるので、日付も実際の時刻で見る
+  const today = toDateString(new Date());
+  const day = useAppStore((s) => s.cspUsage[today]) ?? EMPTY_CSP_DAY;
+  const ratio = activeRatio(day);
+  const parts = [
+    { key: "active", label: "アクティブ", ms: day.activeMs, color: CSP_COLORS.active },
+    { key: "idle", label: "放置", ms: day.idleMs, color: CSP_COLORS.idle },
+    { key: "background", label: "ほかのアプリ", ms: day.backgroundMs, color: CSP_COLORS.background },
+  ];
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl bg-zinc-800/50 p-3 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="font-bold text-zinc-300">⏱️ 今日のクリスタ</span>
+        {cspState && (
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 font-bold",
+              cspState === "active" ? "bg-emerald-500/20 text-emerald-300" : "bg-zinc-700 text-zinc-300",
+            )}
+          >
+            {CSP_STATE_LABEL[cspState]}
+          </span>
+        )}
+        {day.runMs > 0 && (
+          <span className="ml-auto text-zinc-400 tabular-nums">
+            {formatClock(day.firstAt)}〜{formatClock(day.lastAt)}
+          </span>
+        )}
+      </div>
+      {day.runMs > 0 ? (
+        <>
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums text-zinc-300">
+            <span>
+              起動 <b className="text-zinc-50">{formatDuration(day.runMs)}</b>
+            </span>
+            <span>
+              アクティブ <b className="text-zinc-50">{formatDuration(day.activeMs)}</b>
+              {ratio !== null && <span className="text-zinc-400">（{ratio}%）</span>}
+            </span>
+            <span>
+              ノンアクティブ <b className="text-zinc-50">{formatDuration(inactiveMs(day))}</b>
+            </span>
+          </div>
+          {/* 起動時間の内訳（アクティブ / 放置 / ほかのアプリ） */}
+          <div className="flex h-2 gap-0.5 overflow-hidden rounded-full" aria-hidden>
+            {parts
+              .filter((p) => p.ms > 0)
+              .map((p) => (
+                <span key={p.key} style={{ flexGrow: p.ms, backgroundColor: p.color }} title={`${p.label} ${formatDuration(p.ms)}`} />
+              ))}
+          </div>
+        </>
+      ) : (
+        <p className="text-zinc-400">クリスタを起動すると、起動時間・アクティブ時間・ノンアクティブ時間を記録します。</p>
+      )}
+    </div>
+  );
+}
+
 function FlowGauge() {
   const now = useNow(200);
   const flow = useAppStore((s) => s.flow);
@@ -428,6 +494,7 @@ export default function CristaPanel() {
 
       <LiveInk />
       <FlowGauge />
+      <CspUsageToday />
 
       <button
         type="button"

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { PROJECT_TYPE_LABEL } from "@/components/ProjectDialog";
+import CspUsageStats from "@/components/stats/CspUsageStats";
 import IllustrationStats from "@/components/stats/IllustrationStats";
 import IntegratedStats from "@/components/stats/IntegratedStats";
 import MangaStats from "@/components/stats/MangaStats";
@@ -10,13 +11,14 @@ import { useNow } from "@/lib/clock";
 import { cn } from "@/lib/utils";
 import { toDateString, useActiveProject, useAppStore } from "@/store/useAppStore";
 
-type View = "project" | "integrated";
+type View = "project" | "integrated" | "csp";
 
 /** 進捗グラフ: 今のプロジェクト（マンガ / イラスト）と、全部を合わせたお絵描き履歴 */
 export default function StatsDashboard() {
   const now = useNow(60_000);
   const project = useActiveProject();
   const projects = useAppStore((s) => s.projects);
+  const cspUsage = useAppStore((s) => s.cspUsage);
   const [view, setView] = useState<View>("project");
   const [period, setPeriod] = useState<Period>(14);
   const today = toDateString(new Date(now));
@@ -31,6 +33,7 @@ export default function StatsDashboard() {
             [
               ["project", `${PROJECT_TYPE_LABEL[project.type]}：${project.name}`],
               ["integrated", "🖌️ 統合（お絵描き履歴）"],
+              ["csp", "⏱️ クリスタ使用時間"],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -68,7 +71,9 @@ export default function StatsDashboard() {
         </div>
       </div>
 
-      {view === "integrated" ? (
+      {view === "csp" ? (
+        <CspUsageStats usage={cspUsage} projects={projects} period={period} today={today} />
+      ) : view === "integrated" ? (
         <IntegratedStats projects={projects} period={period} today={today} />
       ) : project.type === "manga" ? (
         <MangaStats project={project} period={period} today={today} />

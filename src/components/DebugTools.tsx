@@ -62,6 +62,18 @@ export default function DebugTools() {
           <button type="button" onClick={() => handleBridgeEvent({ type: "save" })} className="rounded bg-zinc-800 px-3 py-1 hover:bg-zinc-700">
             💾 保存
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              // クリスタの使用時間: 10分ぶん（アクティブ6分・放置2分・ほかのアプリ2分）
+              const at = Date.now();
+              const tick = (state: "active" | "idle" | "background", minutes: number) => ({ at, ms: minutes * MINUTE, state });
+              handleBridgeEvent({ type: "usage", ticks: [tick("idle", 2), tick("background", 2), tick("active", 6)] });
+            }}
+            className="rounded bg-zinc-800 px-3 py-1 hover:bg-zinc-700"
+          >
+            ⏱️ クリスタ使用 +10分
+          </button>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => advance(5 * MINUTE)} className="rounded bg-zinc-800 px-3 py-1 hover:bg-zinc-700">

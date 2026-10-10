@@ -18,7 +18,8 @@ function BridgeConnection() {
   const isBridgeEnabled = useAppStore((s) => s.isBridgeEnabled);
   const { status, mode } = useCristaBridge(isBridgeEnabled);
   useEffect(() => {
-    useBridgeStatus.setState({ status, mode });
+    // 切れている間はクリスタの状態も分からない
+    useBridgeStatus.setState(status === "connected" ? { status, mode } : { status, mode, cspState: null });
   }, [status, mode]);
   return null;
 }

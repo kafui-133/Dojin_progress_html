@@ -43,6 +43,35 @@ export interface DailyStats {
   pomodoros: number;
 }
 
+/** クリスタの状態: 前面で操作中 / 前面だが操作なし（放置） / 起動中だがほかのアプリが前面 / 起動していない */
+export type CspState = "active" | "idle" | "background" | "closed";
+
+/** クリスタの使用時間（ブリッジが10秒ごとに送る1回分） */
+export interface CspUsageTick {
+  /** 調べた時刻（ms） */
+  at: number;
+  /** 前回からの経過時間（ms） */
+  ms: number;
+  state: CspState;
+}
+
+/** クリスタの使用時間（1日分。プロジェクトに関係なく PC 全体で1つ） */
+export interface CspUsageDay {
+  /** 起動していた時間 = active + idle + background */
+  runMs: number;
+  /** アクティブ: 前面で操作していた時間 */
+  activeMs: number;
+  /** ノンアクティブのうち、前面にあるが操作していなかった時間 */
+  idleMs: number;
+  /** ノンアクティブのうち、ほかのアプリを使っていた時間 */
+  backgroundMs: number;
+  /** その日に初めて起動を確認した時刻・最後に確認した時刻（ms） */
+  firstAt: number;
+  lastAt: number;
+  /** 時間帯（0〜23時）ごとのアクティブ時間（ms） */
+  hourlyActiveMs: number[];
+}
+
 export interface ComboState {
   comboCount: number;       // 現在のコンボ数
   isFever: boolean;         // フィーバーモード中かどうか

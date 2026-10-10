@@ -5,6 +5,8 @@
 // 検知するのは「ペン/マウスの左ボタンを押した・離した・動いた距離」「Ctrl+S」「Ctrl+Z」と、
 // キーボードを押した「回数」だけ。どのキーを押したか・入力した文字・描いた内容は読み取らず、
 // アプリにも送らない。通信は PC 内（127.0.0.1）だけ。
+// あわせて、クリスタが起動しているか・前面で操作しているかを10秒ごとに調べ、使用時間として送る。
+import { execFile } from "node:child_process";
 import { WebSocketServer } from "ws";
 
 export const DEFAULT_BRIDGE_PORT = 38917;
@@ -24,6 +26,15 @@ const KEY_BURST_GAP_MS = 1200;
 const TYPING_MIN_KEYS = 4;
 /** 長く打ち続けているときも、この回数ごとに途中経過を送る */
 const TYPING_FLUSH_KEYS = 30;
+
+/** クリスタの使用時間を記録する間隔 */
+const USAGE_TICK_MS = 10_000;
+/** クリスタが前面にあっても、これだけ操作がなければ「放置」とみなす */
+const IDLE_AFTER_MS = 3 * 60_000;
+/** クリスタが前面にないとき、起動しているかを調べ直す間隔 */
+const PROCESS_CHECK_MS = 30_000;
+/** アプリとつながっていない間の使用時間は、この件数（約24時間分）までためておく */
+const MAX_PENDING_USAGE = 8640;
 
 /** localhost（開発時の http://localhost:3000、配布版の http://127.0.0.1:38920）のページからの接続だけ受け付ける */
 const ALLOWED_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -49,9 +60,16 @@ export async function startBridge({ port = DEFAULT_BRIDGE_PORT, mode = "crista",
   });
   wss.on("error", (err) => log.error("❌ ブリッジでエラーが発生しました:", err.message));
 
+  /** アプリとつながっていない間にたまった使用時間 */
+  let pendingUsage = [];
+
   wss.on("connection", (socket) => {
     log.info("🔗 進捗ブースターと接続しました");
     socket.send(JSON.stringify({ type: "hello", mode: mode === "any-app" ? "any-app" : mode }));
+    if (pendingUsage.length > 0) {
+      socket.send(JSON.stringify({ type: "usage", ticks: pendingUsage }));
+      pendingUsage = [];
+    }
     socket.on("close", () => log.info("🔌 進捗ブースターとの接続が切れました"));
   });
 
@@ -134,6 +152,92 @@ export async function startBridge({ port = DEFAULT_BRIDGE_PORT, mode = "crista",
     broadcast({ type: "keys", count: 1 });
   }
 
+  // ---- クリスタの使用時間 ----
+
+  /** 最後にマウス・ペン・キーボードを操作した時刻（どのアプリでも） */
+  let lastInputAt = Date.now();
+  /** クリスタが前面にあるか（入力の検知を始めたら差し替える） */
+  let isCristaForeground = () => mode === "any-app";
+
+  let lastUsageState = null;
+  /** @param {{ at: number, ms: number, state: "active" | "idle" | "background" | "closed" }} tick */
+  function emitUsage(tick) {
+    if (tick.state !== lastUsageState) {
+      lastUsageState = tick.state;
+      log.info(USAGE_STATE_LOG[tick.state]);
+    }
+    if (wss.clients.size > 0) broadcast({ type: "usage", ticks: [tick] });
+    else if (tick.state !== "closed") pendingUsage = [...pendingUsage, tick].slice(-MAX_PENDING_USAGE);
+  }
+
+  function startUsageTracking() {
+    let lastTickAt = Date.now();
+    /** スリープ明けなどで間が空いたときに数えすぎないよう、1回分の上限をつける */
+    const elapsed = (now) => {
+      const ms = Math.min(now - lastTickAt, USAGE_TICK_MS * 3);
+      lastTickAt = now;
+      return Math.max(0, ms);
+    };
+
+    if (mode === "simulate") {
+      // 擬似モード: たいてい作業中、ときどき放置・ほかのアプリ
+      let state = "active";
+      const timer = setInterval(() => {
+        if (Math.random() < 0.2) state = ["active", "active", "idle", "background"][Math.floor(Math.random() * 4)];
+        const now = Date.now();
+        emitUsage({ at: now, ms: elapsed(now), state });
+      }, USAGE_TICK_MS);
+      return () => clearInterval(timer);
+    }
+    // 起動しているかを調べられるのは Windows だけ（--any-app のテストでは起動中とみなす）
+    if (process.platform !== "win32" && mode !== "any-app") return () => {};
+
+    let running = mode === "any-app";
+    let lastProcessCheckAt = 0;
+    let wasForeground = false;
+    let processCheckFailed = false;
+
+    const checkProcess = () => {
+      lastProcessCheckAt = Date.now();
+      execFile(
+        "tasklist",
+        ["/FI", "IMAGENAME eq CLIPStudioPaint.exe", "/NH"],
+        { windowsHide: true, timeout: 10_000 },
+        (err, stdout) => {
+          if (err) {
+            if (!processCheckFailed) log.warn("⚠️ クリスタが起動しているかを調べられませんでした:", err.message);
+            processCheckFailed = true;
+            return;
+          }
+          running = TARGET_PROCESS.test(String(stdout));
+        },
+      );
+    };
+
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const foreground = isCristaForeground();
+      if (mode !== "any-app") {
+        if (foreground) running = true; // 前面にあるなら起動している
+        // ほかのアプリに切り替わった直後・しばらくたったときに、まだ起動しているか調べる
+        else if (wasForeground || now - lastProcessCheckAt >= PROCESS_CHECK_MS) checkProcess();
+        // 調べられない環境では、前面にあるときだけ起動中とみなす
+        if (processCheckFailed && !foreground) running = false;
+      }
+      wasForeground = foreground;
+      const state = !running
+        ? "closed"
+        : !foreground
+          ? "background"
+          : now - lastInputAt >= IDLE_AFTER_MS
+            ? "idle"
+            : "active";
+      emitUsage({ at: now, ms: elapsed(now), state });
+    }, USAGE_TICK_MS);
+    if (mode !== "any-app") checkProcess();
+    return () => clearInterval(timer);
+  }
+
   let stopHooks = () => {};
 
   if (mode === "simulate") {
@@ -167,6 +271,7 @@ export async function startBridge({ port = DEFAULT_BRIDGE_PORT, mode = "crista",
   } else {
     stopHooks = await startHooks();
   }
+  const stopUsage = startUsageTracking();
 
   // ---- 入力の検知（Windows） ----
 
@@ -180,6 +285,7 @@ export async function startBridge({ port = DEFAULT_BRIDGE_PORT, mode = "crista",
         isTargetForeground = await createForegroundChecker(log);
       }
     }
+    isCristaForeground = isTargetForeground;
 
     let uiohook;
     try {
@@ -200,6 +306,7 @@ export async function startBridge({ port = DEFAULT_BRIDGE_PORT, mode = "crista",
 
     // ドラッグ中の移動は 'input' でしか届かない環境があるため、こちらで距離を積算する
     uIOhook.on("input", (e) => {
+      lastInputAt = Date.now();
       if (!stroke || (e.type !== EventType.EVENT_MOUSE_MOVED && e.type !== 10)) return;
       stroke.length += Math.hypot(e.x - stroke.x, e.y - stroke.y);
       stroke.x = e.x;
@@ -250,6 +357,7 @@ export async function startBridge({ port = DEFAULT_BRIDGE_PORT, mode = "crista",
   return {
     close: async () => {
       stopHooks();
+      stopUsage();
       for (const id of timers) clearTimeout(id);
       clearTimeout(burstTimer);
       for (const client of wss.clients) client.terminate();
@@ -257,6 +365,13 @@ export async function startBridge({ port = DEFAULT_BRIDGE_PORT, mode = "crista",
     },
   };
 }
+
+const USAGE_STATE_LOG = {
+  active: "⏱️ クリスタ: 作業中（アクティブ）",
+  idle: "⏱️ クリスタ: 前面にあるが操作なし（放置）",
+  background: "⏱️ クリスタ: 起動中・ほかのアプリを使用中",
+  closed: "⏱️ クリスタ: 起動していません",
+};
 
 /** 前面ウィンドウがクリスタかどうかを Win32 API で調べる関数を作る */
 async function createForegroundChecker(log) {

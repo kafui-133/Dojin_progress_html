@@ -10,6 +10,8 @@ import { DEFAULT_VOICEVOX_FEMALE, DEFAULT_VOICEVOX_MALE } from "@/lib/voicevox";
 import { LINES } from "@/lib/voiceLines";
 import type {
   AppSettings,
+  CspUsageDay,
+  CspUsageTick,
   ComboState,
   DailyStats,
   FlowState,
@@ -201,6 +203,39 @@ export const EMPTY_DAY: DailyStats = {
   pomodoros: 0,
 };
 
+export const EMPTY_CSP_DAY: CspUsageDay = {
+  runMs: 0,
+  activeMs: 0,
+  idleMs: 0,
+  backgroundMs: 0,
+  firstAt: 0,
+  lastAt: 0,
+  hourlyActiveMs: Array.from({ length: 24 }, () => 0),
+};
+
+/** クリスタの使用時間を、ブリッジから届いた分だけ足す */
+export function addCspUsage(usage: Record<string, CspUsageDay>, ticks: CspUsageTick[]): Record<string, CspUsageDay> {
+  let next = usage;
+  for (const tick of ticks) {
+    if (tick.state === "closed" || !(tick.ms > 0)) continue;
+    const at = new Date(tick.at);
+    const date = toDateString(at);
+    const prev = next[date] ?? EMPTY_CSP_DAY;
+    const day: CspUsageDay = { ...prev, hourlyActiveMs: [...prev.hourlyActiveMs] };
+    day.runMs += tick.ms;
+    if (tick.state === "active") {
+      day.activeMs += tick.ms;
+      day.hourlyActiveMs[at.getHours()] += tick.ms;
+    } else if (tick.state === "idle") day.idleMs += tick.ms;
+    else day.backgroundMs += tick.ms;
+    const startedAt = tick.at - tick.ms;
+    day.firstAt = day.firstAt > 0 ? Math.min(day.firstAt, startedAt) : startedAt;
+    day.lastAt = Math.max(day.lastAt, tick.at);
+    next = { ...next, [date]: day };
+  }
+  return next;
+}
+
 /** 古い記録（項目が足りない日）を今の形にそろえる */
 export function normalizeDailyStats(dailyStats: Record<string, Partial<DailyStats>> | undefined): Record<string, DailyStats> {
   return Object.fromEntries(Object.entries(dailyStats ?? {}).map(([date, day]) => [date, { ...EMPTY_DAY, ...day }]));
@@ -307,6 +342,8 @@ export interface AppState extends AppSettings {
   /** 勢い（その日のうちは再読込しても続く。日付が変わったら 0 から） */
   flow: FlowState;
   pomodoro: PomodoroState;
+  /** クリスタの使用時間（日付ごと。全プロジェクト共通） */
+  cspUsage: Record<string, CspUsageDay>;
   /** 直近の進捗アクション結果。EffectOverlay がこれを監視して演出する */
   lastAction: (ProgressActionResult & { id: number }) | null;
   /** 直近の線の結果。線の演出がこれを監視する */
@@ -329,6 +366,8 @@ export interface AppState extends AppSettings {
   recordTyping: (keys: number, now?: number) => TypingResult;
   /** クリスタでキー操作（ショートカット）をした */
   recordKeyOps: (count: number, now?: number) => void;
+  /** クリスタの使用時間を記録する */
+  recordCspUsage: (ticks: CspUsageTick[]) => void;
   /** コンボ受付時間切れならコンボ・フィーバーを解除する（タイマー等から定期的に呼ぶ） */
   expireCombo: (now?: number) => void;
   setGoal: (goal: { targetPages?: number; deadline?: string }) => void;
@@ -500,6 +539,7 @@ export const useAppStore = create<AppState>()(
         activeProjectId: initialProject.id,
         flow: initialFlow,
         pomodoro: initialPomodoro,
+        cspUsage: {},
         lastAction: null,
         lastStroke: null,
         lastUndo: null,
@@ -806,6 +846,12 @@ export const useAppStore = create<AppState>()(
             return { projects: [...byId.values()] };
           }),
 
+        recordCspUsage: (ticks) =>
+          set((state) => {
+            const cspUsage = addCspUsage(state.cspUsage, ticks);
+            return cspUsage === state.cspUsage ? {} : { cspUsage };
+          }),
+
         setBgmOn: (on) => set({ isBgmOn: on }),
         setBridgeEnabled: (on) => set({ isBridgeEnabled: on }),
         setStrokeSoundOn: (on) => set({ isStrokeSoundOn: on }),
@@ -834,7 +880,7 @@ export const useAppStore = create<AppState>()(
     {
       name: "syuraba-booster",
       storage: createJSONStorage(() => localStorage),
-      version: 5,
+      version: 6,
       migrate: (persisted, version) => {
         const state = { ...(persisted as Record<string, unknown>) } as Partial<AppState> & {
           manuscript?: Manuscript;
@@ -859,6 +905,8 @@ export const useAppStore = create<AppState>()(
           state.activeProjectId = project.id;
         }
         state.projects = state.projects.map((p) => ({ ...p, dailyStats: normalizeDailyStats(p.dailyStats) }));
+        // v6 でクリスタの使用時間を追加
+        state.cspUsage ??= {};
         delete state.manuscript;
         delete state.dailyStats;
         return state as AppState;
@@ -871,6 +919,7 @@ export const useAppStore = create<AppState>()(
         activeProjectId: state.activeProjectId,
         flow: state.flow,
         pomodoro: state.pomodoro,
+        cspUsage: state.cspUsage,
         ...Object.fromEntries(SETTING_KEYS.map((key) => [key, state[key]])),
       }),
     },

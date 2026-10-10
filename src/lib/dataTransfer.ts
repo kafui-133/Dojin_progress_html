@@ -7,12 +7,12 @@ import {
   toDateString,
   useAppStore,
 } from "@/store/useAppStore";
-import type { AppSettings, ManuscriptPage, Project, ProjectType, StageId, UserProgress } from "@/types";
+import type { AppSettings, CspUsageDay, ManuscriptPage, Project, ProjectType, StageId, UserProgress } from "@/types";
 
 /**
  * 記録の保存・読み込み（JSON ファイル）。
  * - manga: 漫画のプロジェクトだけ / illustration: イラストのプロジェクトだけ
- * - all: 統合データ（全プロジェクト・EXP などの全体の記録・設定）
+ * - all: 統合データ（全プロジェクト・EXP などの全体の記録・設定・クリスタの使用時間）
  * 自分の曲・作った声の音声は大きいので含めない（API キーも含めない）。
  */
 
@@ -33,6 +33,8 @@ interface ExportFile {
   progress?: UserProgress;
   settings?: Partial<AppSettings>;
   activeProjectId?: string;
+  /** クリスタの使用時間（統合データのみ） */
+  cspUsage?: Record<string, CspUsageDay>;
 }
 
 export function buildExport(kind: ExportKind, state: AppState = useAppStore.getState()): ExportFile {
@@ -47,6 +49,7 @@ export function buildExport(kind: ExportKind, state: AppState = useAppStore.getS
       progress: state.progress,
       settings: Object.fromEntries(SETTING_KEYS.map((key) => [key, state[key]])) as Partial<AppSettings>,
       activeProjectId: state.activeProjectId,
+      cspUsage: state.cspUsage,
     }),
   };
 }
@@ -111,6 +114,30 @@ function sanitizeProject(raw: unknown): Project {
   };
 }
 
+function sanitizeCspUsage(raw: unknown): Record<string, CspUsageDay> {
+  if (!isRecord(raw)) return {};
+  return Object.fromEntries(
+    Object.entries(raw)
+      .filter(([date, day]) => DATE_KEY.test(date) && isRecord(day))
+      .map(([date, value]) => {
+        const day = value as Record<string, unknown>;
+        const hourly = Array.isArray(day.hourlyActiveMs) ? day.hourlyActiveMs : [];
+        return [
+          date,
+          {
+            runMs: toNumber(day.runMs),
+            activeMs: toNumber(day.activeMs),
+            idleMs: toNumber(day.idleMs),
+            backgroundMs: toNumber(day.backgroundMs),
+            firstAt: toNumber(day.firstAt),
+            lastAt: toNumber(day.lastAt),
+            hourlyActiveMs: Array.from({ length: 24 }, (_, h) => toNumber(hourly[h])),
+          },
+        ];
+      }),
+  );
+}
+
 export function parseImport(text: string): ExportFile {
   let data: unknown;
   try {
@@ -143,6 +170,7 @@ export function parseImport(text: string): ExportFile {
       ) as Partial<AppSettings>;
     }
     if (typeof data.activeProjectId === "string") file.activeProjectId = data.activeProjectId;
+    if (data.cspUsage !== undefined) file.cspUsage = sanitizeCspUsage(data.cspUsage);
   }
   return file;
 }
@@ -170,6 +198,7 @@ export function applyImport(file: ExportFile): void {
       projects: file.projects,
       activeProjectId,
       ...(file.progress && { progress: { ...store.progress, ...file.progress } }),
+      ...(file.cspUsage && { cspUsage: file.cspUsage }),
       ...file.settings,
     });
     return;
