@@ -1,0 +1,79 @@
+# 配布用のデスクトップアプリ（Windows の exe）を作って、GitHub の Releases に置く
+# - ブランチに push するたびに「最新版（desktop-latest）」を作り直す
+# - v1.0.0 のようなタグを付けたら、その版のリリースを作る
+# - Actions の画面から手動でも実行できる
+name: Desktop app (Windows)
+
+on:
+  push:
+    branches:
+      - main
+      - claude/nextjs-project-setup-dbddo0
+    tags:
+      - "v*"
+    paths:
+      - "src/**"
+      - "public/**"
+      - "bridge/**"
+      - "electron/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "next.config.ts"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build the exe
+        run: npm run dist:win
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SyurabaBooster-windows
+          path: |
+            release/*.exe
+          if-no-files-found: error
+
+      - name: Publish "desktop-latest"
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sed -i "s/__SHA__/$GITHUB_SHA/" .github/release-notes.md
+          gh release delete desktop-latest --yes --cleanup-tag || true
+          gh release create desktop-latest release/*.exe \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "進捗ブースター 最新版（Windows）" \
+            --notes-file .github/release-notes.md
+
+      - name: Publish the tagged release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sed -i "s/__SHA__/$GITHUB_SHA/" .github/release-notes.md
+          gh release create "$GITHUB_REF_NAME" release/*.exe \
+            --title "進捗ブースター $GITHUB_REF_NAME（Windows）" \
+            --notes-file .github/release-notes.md
