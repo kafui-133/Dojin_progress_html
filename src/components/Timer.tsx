@@ -1,17 +1,96 @@
 "use client";
 
-import { Coffee, Pause, Play, RotateCcw, Timer as TimerIcon } from "lucide-react";
+import { Check, Coffee, Pause, Play, RotateCcw, Settings2, Timer as TimerIcon } from "lucide-react";
+import { useState } from "react";
 import { useNow } from "@/lib/clock";
 import { cn } from "@/lib/utils";
-import { POMODORO_DURATION, getPomodoroRemaining, toDateString, useAppStore } from "@/store/useAppStore";
+import {
+  POMODORO_LIMITS,
+  clampPomodoroMinutes,
+  getPomodoroRemaining,
+  toDateString,
+  useAppStore,
+} from "@/store/useAppStore";
 import type { PomodoroMode as Mode } from "@/types";
 
-const DURATION_MS = POMODORO_DURATION;
-
-const MODE_LABEL: Record<Mode, string> = {
-  focus: "作業 25分",
-  break: "休憩 5分",
+const MODE_NAME: Record<Mode, string> = {
+  focus: "作業",
+  break: "休憩",
 };
+
+/** よく使う組み合わせ（作業 / 休憩、分） */
+const PRESETS: [number, number][] = [
+  [25, 5],
+  [50, 10],
+  [90, 15],
+];
+
+/** 作業・休憩の長さを変える */
+function DurationEditor({ onClose }: { onClose: () => void }) {
+  const focusMin = useAppStore((s) => s.pomodoroFocusMin);
+  const breakMin = useAppStore((s) => s.pomodoroBreakMin);
+  const pomodoro = useAppStore((s) => s.pomodoro);
+  const setPomodoroMinutes = useAppStore((s) => s.setPomodoroMinutes);
+  // 入力中は下書きにしておき、「決定」で反映する
+  const [draft, setDraft] = useState({ focus: String(focusMin), break: String(breakMin) });
+  const inProgress = pomodoro.endAt !== null || pomodoro.pausedRemaining !== pomodoro.totalMs;
+
+  const apply = (focus: number, rest: number) => {
+    setPomodoroMinutes({ focus, break: rest });
+    onClose();
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg bg-zinc-800/70 p-3 text-sm">
+      <div className="flex flex-wrap gap-1">
+        {PRESETS.map(([f, b]) => (
+          <button
+            key={`${f}-${b}`}
+            type="button"
+            onClick={() => apply(f, b)}
+            className={cn(
+              "rounded-full px-3 py-1 text-xs font-bold transition",
+              f === focusMin && b === breakMin ? "bg-zinc-100 text-zinc-900" : "bg-zinc-700 text-zinc-300 hover:text-white",
+            )}
+          >
+            {f}分 / {b}分
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        {(["focus", "break"] as const).map((m) => (
+          <label key={m} className="flex flex-col gap-1 text-xs text-zinc-300">
+            {MODE_NAME[m]}（分）
+            <input
+              type="number"
+              inputMode="numeric"
+              min={POMODORO_LIMITS[m].min}
+              max={POMODORO_LIMITS[m].max}
+              value={draft[m]}
+              onChange={(e) => setDraft((d) => ({ ...d, [m]: e.target.value }))}
+              className="w-20 rounded bg-zinc-900 px-2 py-1 text-sm tabular-nums"
+              aria-label={`${MODE_NAME[m]}の時間（分）`}
+            />
+          </label>
+        ))}
+        <button
+          type="button"
+          onClick={() =>
+            apply(clampPomodoroMinutes("focus", Number(draft.focus)), clampPomodoroMinutes("break", Number(draft.break)))
+          }
+          className="ml-auto flex items-center gap-1 rounded bg-fuchsia-600 px-3 py-1.5 font-bold"
+        >
+          <Check className="size-4" /> 決定
+        </button>
+      </div>
+      <p className="text-xs text-zinc-400">
+        作業は{POMODORO_LIMITS.focus.min}〜{POMODORO_LIMITS.focus.max}分、休憩は{POMODORO_LIMITS.break.min}〜
+        {POMODORO_LIMITS.break.max}分。
+        {inProgress && "いま進めている回はそのままで、次の回から新しい長さになります。"}
+      </p>
+    </div>
+  );
+}
 
 const RING_RADIUS = 52;
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
@@ -22,7 +101,7 @@ function format(ms: number): string {
 }
 
 /**
- * 25分ポモドーロタイマー（表示と操作）。時間の管理はストアにあり、
+ * ポモドーロタイマー（表示と操作。作業・休憩の長さは変えられる）。時間の管理はストアにあり、
  * 終わったときの切り替え・BGM・読み上げは GlobalRuntime が行うので、別のページに移っても続く。
  */
 export default function Timer() {
@@ -32,6 +111,9 @@ export default function Timer() {
   const pauseTimer = useAppStore((s) => s.pauseTimer);
   const resetTimer = useAppStore((s) => s.resetTimer);
   const setTimerMode = useAppStore((s) => s.setTimerMode);
+  const focusMin = useAppStore((s) => s.pomodoroFocusMin);
+  const breakMin = useAppStore((s) => s.pomodoroBreakMin);
+  const [editing, setEditing] = useState(false);
   const completedCount = useAppStore((s) => {
     const today = toDateString(new Date(now));
     return s.projects.reduce((sum, p) => sum + (p.dailyStats[today]?.pomodoros ?? 0), 0);
@@ -45,17 +127,30 @@ export default function Timer() {
   const reset = () => resetTimer();
   const switchMode = (next: Mode) => setTimerMode(next);
 
-  const ratio = remaining / DURATION_MS[mode];
+  const ratio = Math.min(1, remaining / pomodoro.totalMs);
+  const modeLabel = (m: Mode) => `${MODE_NAME[m]} ${m === "focus" ? focusMin : breakMin}分`;
   const color = mode === "focus" ? "#e879f9" : "#34d399";
 
   return (
     <section className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center">
         <h2 className="flex items-center gap-1.5 text-sm font-bold">
           <TimerIcon className="size-4" /> ポモドーロ
         </h2>
-        <span className="text-xs text-zinc-400">今日 🍅 × {completedCount}</span>
+        <span className="ml-auto text-xs text-zinc-400">今日 🍅 × {completedCount}</span>
+        <button
+          type="button"
+          onClick={() => setEditing((v) => !v)}
+          aria-expanded={editing}
+          aria-label="作業・休憩の時間を変更"
+          title="作業・休憩の時間を変更"
+          className={cn("ml-2 rounded p-1 transition hover:text-white", editing ? "text-white" : "text-zinc-400")}
+        >
+          <Settings2 className="size-4" />
+        </button>
       </div>
+
+      {editing && <DurationEditor onClose={() => setEditing(false)} />}
 
       <div className="flex gap-1 rounded-lg bg-zinc-800 p-1 text-sm">
         {(["focus", "break"] as const).map((m) => (
@@ -69,7 +164,7 @@ export default function Timer() {
             )}
           >
             {m === "break" && <Coffee className="size-3.5" />}
-            {MODE_LABEL[m]}
+            {modeLabel(m)}
           </button>
         ))}
       </div>
@@ -106,7 +201,7 @@ export default function Timer() {
             )}
           >
             {isRunning ? <Pause className="size-4" /> : <Play className="size-4" />}
-            {isRunning ? "一時停止" : remaining < DURATION_MS[mode] ? "再開" : "スタート"}
+            {isRunning ? "一時停止" : remaining < pomodoro.totalMs ? "再開" : "スタート"}
           </button>
           <button
             type="button"

@@ -165,6 +165,8 @@ export interface AppSettings {
   restBgmId: string;               // 休憩中に流すゆったりした BGM
   zoneDailyLimit: number;          // 1日に ZONE に入れる回数（修羅場モードでは無制限）
   shurabaMode: boolean;            // 修羅場モード（ZONE の上限なし）
+  pomodoroFocusMin: number;        // ポモドーロの作業時間（分）
+  pomodoroBreakMin: number;        // ポモドーロの休憩時間（分）
 }
 
 export type ProjectType = "manga" | "illustration";
@@ -193,6 +195,8 @@ export interface PomodoroState {
   endAt: number | null;
   /** 止まっているときの残り時間（ms） */
   pausedRemaining: number;
+  /** この回の長さ（ms）。途中で設定を変えても、今の回はこの長さのまま */
+  totalMs: number;
 }
 
 /** 読み上げの声: ブラウザ標準 / Gemini の自然な声 / VOICEVOX */

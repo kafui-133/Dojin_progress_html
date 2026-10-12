@@ -174,9 +174,33 @@ export function getProgressPercent(manuscript: Manuscript): number {
 }
 
 // ---- ポモドーロ ----
-export const FOCUS_MS = 25 * 60_000;
-export const BREAK_MS = 5 * 60_000;
-export const POMODORO_DURATION: Record<PomodoroMode, number> = { focus: FOCUS_MS, break: BREAK_MS };
+export const DEFAULT_FOCUS_MIN = 25;
+export const DEFAULT_BREAK_MIN = 5;
+/** 設定できる長さ（分） */
+export const POMODORO_LIMITS: Record<PomodoroMode, { min: number; max: number }> = {
+  focus: { min: 1, max: 180 },
+  break: { min: 1, max: 60 },
+};
+
+export function clampPomodoroMinutes(mode: PomodoroMode, minutes: number): number {
+  const { min, max } = POMODORO_LIMITS[mode];
+  return Math.min(max, Math.max(min, Math.round(minutes) || min));
+}
+
+/** 設定から、作業・休憩1回の長さ（ms） */
+export function pomodoroDurationMs(
+  settings: Pick<AppSettings, "pomodoroFocusMin" | "pomodoroBreakMin">,
+  mode: PomodoroMode,
+): number {
+  const minutes = mode === "focus" ? settings.pomodoroFocusMin : settings.pomodoroBreakMin;
+  return clampPomodoroMinutes(mode, minutes) * 60_000;
+}
+
+/** 止まっていて、まだ1秒も進めていない状態の、その種類のタイマー */
+function freshPomodoro(settings: Pick<AppSettings, "pomodoroFocusMin" | "pomodoroBreakMin">, mode: PomodoroMode): PomodoroState {
+  const totalMs = pomodoroDurationMs(settings, mode);
+  return { mode, endAt: null, pausedRemaining: totalMs, totalMs };
+}
 
 export function getPomodoroRemaining(pomodoro: PomodoroState, now: number): number {
   return pomodoro.endAt !== null ? Math.max(0, pomodoro.endAt - now) : pomodoro.pausedRemaining;
@@ -273,7 +297,12 @@ const initialCombo: ComboState = {
   lastActionTime: 0,
 };
 
-const initialPomodoro: PomodoroState = { mode: "focus", endAt: null, pausedRemaining: FOCUS_MS };
+const initialPomodoro: PomodoroState = {
+  mode: "focus",
+  endAt: null,
+  pausedRemaining: DEFAULT_FOCUS_MIN * 60_000,
+  totalMs: DEFAULT_FOCUS_MIN * 60_000,
+};
 
 function emptyManuscript(pages: number): Manuscript {
   return { pages: resizePages([], pages), startedAt: 0 };
@@ -328,6 +357,8 @@ const initialSettings: AppSettings = {
   restBgmId: DEFAULT_REST_BGM,
   zoneDailyLimit: DEFAULT_ZONE_DAILY_LIMIT,
   shurabaMode: false,
+  pomodoroFocusMin: DEFAULT_FOCUS_MIN,
+  pomodoroBreakMin: DEFAULT_BREAK_MIN,
 };
 
 export const SETTING_KEYS = Object.keys(initialSettings) as (keyof AppSettings)[];
@@ -377,6 +408,8 @@ export interface AppState extends AppSettings {
   pauseTimer: (now?: number) => void;
   resetTimer: () => void;
   setTimerMode: (mode: PomodoroMode) => void;
+  /** 作業・休憩の長さ（分）を変える */
+  setPomodoroMinutes: (minutes: { focus?: number; break?: number }) => void;
   /** 時間が来たら作業⇄休憩を切り替える。切り替わったらその種類を返す */
   tickPomodoro: (now?: number) => "focus-done" | "break-done" | null;
 
@@ -791,12 +824,21 @@ export const useAppStore = create<AppState>()(
               : { pomodoro: { ...pomodoro, endAt: null, pausedRemaining: Math.max(0, pomodoro.endAt - now) } },
           ),
 
-        resetTimer: () =>
-          set(({ pomodoro }) => ({
-            pomodoro: { ...pomodoro, endAt: null, pausedRemaining: POMODORO_DURATION[pomodoro.mode] },
-          })),
+        resetTimer: () => set((state) => ({ pomodoro: freshPomodoro(state, state.pomodoro.mode) })),
 
-        setTimerMode: (mode) => set({ pomodoro: { mode, endAt: null, pausedRemaining: POMODORO_DURATION[mode] } }),
+        setTimerMode: (mode) => set((state) => ({ pomodoro: freshPomodoro(state, mode) })),
+
+        setPomodoroMinutes: ({ focus, break: rest }) =>
+          set((state) => {
+            const settings = {
+              pomodoroFocusMin: focus !== undefined ? clampPomodoroMinutes("focus", focus) : state.pomodoroFocusMin,
+              pomodoroBreakMin: rest !== undefined ? clampPomodoroMinutes("break", rest) : state.pomodoroBreakMin,
+            };
+            const { pomodoro } = state;
+            // まだ始めていないタイマーは新しい長さにする（動いている・途中の回はそのまま、次の回から）
+            const untouched = pomodoro.endAt === null && pomodoro.pausedRemaining === pomodoro.totalMs;
+            return { ...settings, ...(untouched && { pomodoro: freshPomodoro(settings, pomodoro.mode) }) };
+          }),
 
         tickPomodoro: (now = clockNow()) => {
           const state = get();
@@ -804,14 +846,15 @@ export const useAppStore = create<AppState>()(
           if (pomodoro.endAt === null || now < pomodoro.endAt) return null;
           if (pomodoro.mode === "focus") {
             // 作業が終わったら、そのまま休憩を始める（BGM はゆったり、演出はお休み）
+            const rest = freshPomodoro(state, "break");
             set({
-              pomodoro: { mode: "break", endAt: now + BREAK_MS, pausedRemaining: BREAK_MS },
+              pomodoro: { ...rest, endAt: now + rest.totalMs },
               projects: addActiveDaily(state, toDateString(new Date(now)), { pomodoros: 1 }),
               flow: { ...todaysFlow(state.flow, now), level: 0, inZone: false },
             });
             return "focus-done";
           }
-          set({ pomodoro: { mode: "focus", endAt: null, pausedRemaining: FOCUS_MS } });
+          set({ pomodoro: freshPomodoro(state, "focus") });
           return "break-done";
         },
 
@@ -880,7 +923,7 @@ export const useAppStore = create<AppState>()(
     {
       name: "syuraba-booster",
       storage: createJSONStorage(() => localStorage),
-      version: 6,
+      version: 7,
       migrate: (persisted, version) => {
         const state = { ...(persisted as Record<string, unknown>) } as Partial<AppState> & {
           manuscript?: Manuscript;
@@ -907,6 +950,11 @@ export const useAppStore = create<AppState>()(
         state.projects = state.projects.map((p) => ({ ...p, dailyStats: normalizeDailyStats(p.dailyStats) }));
         // v6 でクリスタの使用時間を追加
         state.cspUsage ??= {};
+        // v7 でポモドーロの長さを変えられるように。今の回の長さを補う
+        if (state.pomodoro && typeof state.pomodoro.totalMs !== "number") {
+          const totalMs = (state.pomodoro.mode === "break" ? DEFAULT_BREAK_MIN : DEFAULT_FOCUS_MIN) * 60_000;
+          state.pomodoro = { ...state.pomodoro, totalMs };
+        }
         delete state.manuscript;
         delete state.dailyStats;
         return state as AppState;
