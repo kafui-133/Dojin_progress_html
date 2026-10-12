@@ -57,7 +57,7 @@ export interface CspUsageTick {
 
 /** クリスタの使用時間（1日分。プロジェクトに関係なく PC 全体で1つ） */
 export interface CspUsageDay {
-  /** 起動していた時間 = active + idle + background */
+  /** 起動していた時間 = active + idle + background（ポモドーロの休憩中は含めない） */
   runMs: number;
   /** アクティブ: 前面で操作していた時間 */
   activeMs: number;
@@ -65,6 +65,8 @@ export interface CspUsageDay {
   idleMs: number;
   /** ノンアクティブのうち、ほかのアプリを使っていた時間 */
   backgroundMs: number;
+  /** ポモドーロの休憩中にクリスタが起動していた時間（アクティブ・ノンアクティブには数えない） */
+  restMs: number;
   /** その日に初めて起動を確認した時刻・最後に確認した時刻（ms） */
   firstAt: number;
   lastAt: number;

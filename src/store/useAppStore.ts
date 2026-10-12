@@ -232,26 +232,42 @@ export const EMPTY_CSP_DAY: CspUsageDay = {
   activeMs: 0,
   idleMs: 0,
   backgroundMs: 0,
+  restMs: 0,
   firstAt: 0,
   lastAt: 0,
   hourlyActiveMs: Array.from({ length: 24 }, () => 0),
 };
 
-/** クリスタの使用時間を、ブリッジから届いた分だけ足す */
-export function addCspUsage(usage: Record<string, CspUsageDay>, ticks: CspUsageTick[]): Record<string, CspUsageDay> {
+/** その時刻が、今のポモドーロの休憩の間か */
+export function isRestAt(pomodoro: PomodoroState, at: number): boolean {
+  return pomodoro.mode === "break" && pomodoro.endAt !== null && at > pomodoro.endAt - pomodoro.totalMs && at <= pomodoro.endAt;
+}
+
+/**
+ * クリスタの使用時間を、ブリッジから届いた分だけ足す。
+ * ポモドーロの休憩中の分はアクティブ・ノンアクティブ（起動時間）に数えず、休憩として別に記録する。
+ */
+export function addCspUsage(
+  usage: Record<string, CspUsageDay>,
+  ticks: CspUsageTick[],
+  restAt: (at: number) => boolean = () => false,
+): Record<string, CspUsageDay> {
   let next = usage;
   for (const tick of ticks) {
     if (tick.state === "closed" || !(tick.ms > 0)) continue;
     const at = new Date(tick.at);
     const date = toDateString(at);
     const prev = next[date] ?? EMPTY_CSP_DAY;
-    const day: CspUsageDay = { ...prev, hourlyActiveMs: [...prev.hourlyActiveMs] };
-    day.runMs += tick.ms;
-    if (tick.state === "active") {
+    const day: CspUsageDay = { ...EMPTY_CSP_DAY, ...prev, hourlyActiveMs: [...prev.hourlyActiveMs] };
+    if (restAt(tick.at)) day.restMs += tick.ms;
+    else {
+      day.runMs += tick.ms;
+      if (tick.state === "active") {
       day.activeMs += tick.ms;
-      day.hourlyActiveMs[at.getHours()] += tick.ms;
-    } else if (tick.state === "idle") day.idleMs += tick.ms;
-    else day.backgroundMs += tick.ms;
+        day.hourlyActiveMs[at.getHours()] += tick.ms;
+      } else if (tick.state === "idle") day.idleMs += tick.ms;
+      else day.backgroundMs += tick.ms;
+    }
     const startedAt = tick.at - tick.ms;
     day.firstAt = day.firstAt > 0 ? Math.min(day.firstAt, startedAt) : startedAt;
     day.lastAt = Math.max(day.lastAt, tick.at);
@@ -891,7 +907,7 @@ export const useAppStore = create<AppState>()(
 
         recordCspUsage: (ticks) =>
           set((state) => {
-            const cspUsage = addCspUsage(state.cspUsage, ticks);
+            const cspUsage = addCspUsage(state.cspUsage, ticks, (at) => isRestAt(state.pomodoro, at));
             return cspUsage === state.cspUsage ? {} : { cspUsage };
           }),
 
@@ -923,7 +939,7 @@ export const useAppStore = create<AppState>()(
     {
       name: "syuraba-booster",
       storage: createJSONStorage(() => localStorage),
-      version: 7,
+      version: 8,
       migrate: (persisted, version) => {
         const state = { ...(persisted as Record<string, unknown>) } as Partial<AppState> & {
           manuscript?: Manuscript;
@@ -950,6 +966,10 @@ export const useAppStore = create<AppState>()(
         state.projects = state.projects.map((p) => ({ ...p, dailyStats: normalizeDailyStats(p.dailyStats) }));
         // v6 でクリスタの使用時間を追加
         state.cspUsage ??= {};
+        // v8 で休憩中の時間を別に記録するように。前の日の記録にも項目を補う
+        state.cspUsage = Object.fromEntries(
+          Object.entries(state.cspUsage).map(([date, day]) => [date, { ...EMPTY_CSP_DAY, ...day }]),
+        );
         // v7 でポモドーロの長さを変えられるように。今の回の長さを補う
         if (state.pomodoro && typeof state.pomodoro.totalMs !== "number") {
           const totalMs = (state.pomodoro.mode === "break" ? DEFAULT_BREAK_MIN : DEFAULT_FOCUS_MIN) * 60_000;

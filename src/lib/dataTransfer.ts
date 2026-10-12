@@ -129,6 +129,7 @@ function sanitizeCspUsage(raw: unknown): Record<string, CspUsageDay> {
             activeMs: toNumber(day.activeMs),
             idleMs: toNumber(day.idleMs),
             backgroundMs: toNumber(day.backgroundMs),
+            restMs: toNumber(day.restMs),
             firstAt: toNumber(day.firstAt),
             lastAt: toNumber(day.lastAt),
             hourlyActiveMs: Array.from({ length: 24 }, (_, h) => toNumber(hourly[h])),

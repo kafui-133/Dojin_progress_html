@@ -266,6 +266,8 @@ function LiveInk() {
 
 function CspUsageToday() {
   const cspState = useBridgeStatus((s) => s.cspState);
+  const now = useNow(5_000);
+  const resting = useAppStore((s) => isResting(s.pomodoro, now));
   // ブリッジは実際の時刻で送ってくるので、日付も実際の時刻で見る
   const today = toDateString(new Date());
   const day = useAppStore((s) => s.cspUsage[today]) ?? EMPTY_CSP_DAY;
@@ -284,19 +286,20 @@ function CspUsageToday() {
           <span
             className={cn(
               "rounded-full px-2 py-0.5 font-bold",
-              cspState === "active" ? "bg-emerald-500/20 text-emerald-300" : "bg-zinc-700 text-zinc-300",
+              cspState === "active" && !resting ? "bg-emerald-500/20 text-emerald-300" : "bg-zinc-700 text-zinc-300",
             )}
           >
-            {CSP_STATE_LABEL[cspState]}
+            {/* ポモドーロの休憩中は、アクティブ・ノンアクティブに数えない */}
+            {resting && cspState !== "closed" ? "☕ 休憩中（数えない）" : CSP_STATE_LABEL[cspState]}
           </span>
         )}
-        {day.runMs > 0 && (
+        {day.firstAt > 0 && (
           <span className="ml-auto text-zinc-400 tabular-nums">
             {formatClock(day.firstAt)}〜{formatClock(day.lastAt)}
           </span>
         )}
       </div>
-      {day.runMs > 0 ? (
+      {day.runMs > 0 || day.restMs > 0 ? (
         <>
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums text-zinc-300">
             <span>
@@ -309,6 +312,7 @@ function CspUsageToday() {
             <span>
               ノンアクティブ <b className="text-zinc-50">{formatDuration(inactiveMs(day))}</b>
             </span>
+            {day.restMs > 0 && <span className="text-zinc-400">休憩 {formatDuration(day.restMs)}（含めない）</span>}
           </div>
           {/* 起動時間の内訳（アクティブ / 放置 / ほかのアプリ） */}
           <div className="flex h-2 gap-0.5 overflow-hidden rounded-full" aria-hidden>

@@ -16,6 +16,7 @@ function sumUsage(days: CspUsageDay[]): CspUsageDay {
     total.activeMs += day.activeMs;
     total.idleMs += day.idleMs;
     total.backgroundMs += day.backgroundMs;
+    total.restMs += day.restMs;
     day.hourlyActiveMs.forEach((ms, h) => (total.hourlyActiveMs[h] += ms));
   }
   return total;
@@ -65,7 +66,7 @@ export default function CspUsageStats({
     minutes: usedDays > 0 ? Math.round(ms / 60_000 / usedDays) : 0,
   }));
   const peakHour = total.activeMs > 0 ? hourly.reduce((best, h, i) => (h.minutes > hourly[best].minutes ? i : best), 0) : null;
-  const tableDays = [...days].reverse().filter((d) => dayOf(d).runMs > 0);
+  const tableDays = [...days].reverse().filter((d) => dayOf(d).firstAt > 0);
 
   if (recorded.length === 0) {
     return (
@@ -83,7 +84,13 @@ export default function CspUsageStats({
         <StatTile
           label="今日の起動時間"
           value={formatDuration(todayUsage.runMs)}
-          sub={todayUsage.runMs > 0 ? `${formatClock(todayUsage.firstAt)}〜${formatClock(todayUsage.lastAt)}` : "まだ起動していません"}
+          sub={
+            todayUsage.firstAt > 0
+              ? `${formatClock(todayUsage.firstAt)}〜${formatClock(todayUsage.lastAt)}${
+                  todayUsage.restMs > 0 ? `（休憩 ${formatDuration(todayUsage.restMs)} は除く）` : ""
+                }`
+              : "まだ起動していません"
+          }
         />
         <StatTile
           label="今日のアクティブ"
@@ -111,7 +118,9 @@ export default function CspUsageStats({
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <Card
           title="日ごとの起動時間（内訳）"
-          subtitle={`積み上げの高さが起動時間（時間）。期間の合計: 起動 ${formatDuration(total.runMs)}・アクティブ ${formatDuration(total.activeMs)}・ノンアクティブ ${formatDuration(inactiveMs(total))}`}
+          subtitle={`積み上げの高さが起動時間（時間、休憩中を除く）。期間の合計: 起動 ${formatDuration(total.runMs)}・アクティブ ${formatDuration(total.activeMs)}・ノンアクティブ ${formatDuration(inactiveMs(total))}${
+            total.restMs > 0 ? `・休憩（除外） ${formatDuration(total.restMs)}` : ""
+          }`}
         >
           <div className="flex flex-wrap gap-3">
             <LegendItem color={CSP_COLORS.active} label="アクティブ" shape="rect" />
@@ -172,7 +181,7 @@ export default function CspUsageStats({
 
       <Card
         title="日ごとの記録"
-        subtitle="アクティブ = クリスタが前面にあり、3分以内に操作している時間。ノンアクティブ = 起動しているがそれ以外（放置・ほかのアプリ）"
+        subtitle="アクティブ = クリスタが前面にあり、3分以内に操作している時間。ノンアクティブ = 起動しているがそれ以外（放置・ほかのアプリ）。ポモドーロの休憩中は、どちらにも数えず「休憩」に分けています"
       >
         <div className="overflow-x-auto">
           <table className="w-full text-xs tabular-nums">
@@ -183,6 +192,7 @@ export default function CspUsageStats({
                 <th className="text-right">アクティブ</th>
                 <th className="text-right">放置</th>
                 <th className="text-right">ほかのアプリ</th>
+                <th className="text-right">休憩（除外）</th>
                 <th className="text-right">アクティブ率</th>
                 <th className="text-right">最初</th>
                 <th className="text-right">最後</th>
@@ -198,7 +208,8 @@ export default function CspUsageStats({
                     <td className="text-right">{formatDuration(day.activeMs)}</td>
                     <td className="text-right">{formatDuration(day.idleMs)}</td>
                     <td className="text-right">{formatDuration(day.backgroundMs)}</td>
-                    <td className="text-right">{activeRatio(day)}%</td>
+                    <td className="text-right text-zinc-400">{formatDuration(day.restMs)}</td>
+                    <td className="text-right">{activeRatio(day) ?? "—"}{activeRatio(day) !== null && "%"}</td>
                     <td className="text-right">{formatClock(day.firstAt)}</td>
                     <td className="text-right">{formatClock(day.lastAt)}</td>
                   </tr>
