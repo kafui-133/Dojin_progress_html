@@ -4,6 +4,8 @@ import { GEMINI_ENABLED } from "@/lib/edition";
 import { geminiSource, getCharacter } from "@/lib/geminiTts";
 import { soundManager } from "@/lib/soundManager";
 import { type VoiceSource, generateShared, getCachedVoice } from "@/lib/ttsCache";
+import { toReading } from "@/lib/voiceLines";
+import { voicePackSource } from "@/lib/voicePack";
 import { voicevoxSource } from "@/lib/voicevox";
 import type { AppSettings } from "@/types";
 
@@ -35,18 +37,7 @@ const STYLE: Record<VoiceGender, { pitch: number; rate: number }> = {
   male: { pitch: 0.6, rate: 0.95 },
 };
 
-/** 表示用の文字を、読み上げやすい文字に置き換える */
-const READINGS: [RegExp, string][] = [
-  [/ZONE/g, "ゾーン"],
-  [/FEVER/g, "フィーバー"],
-  [/EXP×(\d+)/g, "経験値$1倍"],
-  [/×/g, "かける"],
-  [/(\d+)m/g, "$1メートル"],
-];
-
-export function toReading(text: string): string {
-  return READINGS.reduce((t, [pattern, reading]) => t.replace(pattern, reading), text);
-}
+export { toReading } from "@/lib/voiceLines";
 
 function isSupported(): boolean {
   return typeof window !== "undefined" && "speechSynthesis" in window;
@@ -233,6 +224,9 @@ export function voiceSources(settings: AppSettings): Record<VoiceGender, VoiceSo
       female: voicevoxSource(settings.voicevoxFemaleStyle, "female"),
       male: voicevoxSource(settings.voicevoxMaleStyle, "male"),
     };
+  }
+  if (settings.ttsEngine === "pack") {
+    return { female: voicePackSource("female"), male: voicePackSource("male") };
   }
   return { female: null, male: null };
 }

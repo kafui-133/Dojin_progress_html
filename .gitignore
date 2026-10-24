@@ -46,3 +46,6 @@ next-env.d.ts
 
 # 自分の曲など、配布できない音源は入れない
 /public/sounds/*.mp3
+
+# 自作の音声（自分で作った読み上げ音声は Git に入れない）
+/voice-pack/output/

@@ -17,6 +17,19 @@ export const LINES = {
   restEnd: "休憩おわり！また描いていきましょう",
 } as const;
 
+/** 表示用の文字を、読み上げやすい文字に置き換える */
+const READINGS: [RegExp, string][] = [
+  [/ZONE/g, "ゾーン"],
+  [/FEVER/g, "フィーバー"],
+  [/EXP×(\d+)/g, "経験値$1倍"],
+  [/×/g, "かける"],
+  [/(\d+)m/g, "$1メートル"],
+];
+
+export function toReading(text: string): string {
+  return READINGS.reduce((t, [pattern, reading]) => t.replace(pattern, reading), text);
+}
+
 export const strokeMilestoneLine = (strokes: number) => `${strokes}本突破！`;
 export const lengthMilestoneLine = (meters: number) => `${meters}m描いた！`;
 

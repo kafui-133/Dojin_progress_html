@@ -37,6 +37,11 @@ export async function getCachedVoice(source: VoiceSource, text: string): Promise
   }
 }
 
+/** 用意された音声ファイルを保存する（自作の音声の読み込み） */
+export async function putCachedVoice(source: VoiceSource, text: string, blob: Blob): Promise<void> {
+  await withStore(STORES.voiceCache, "readwrite", (s) => s.put(blob, cacheKey(source, text)));
+}
+
 export async function countCachedVoices(source: VoiceSource, texts: string[]): Promise<number> {
   let count = 0;
   for (const text of texts) if (await getCachedVoice(source, text)) count++;

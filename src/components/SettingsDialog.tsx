@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Loader2, Play, Plus, RefreshCw, Sparkles, Square, Trash2, X } from "lucide-react";
+import { Download, ExternalLink, FolderOpen, Loader2, Play, Plus, RefreshCw, Sparkles, Square, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCustomTracks } from "@/lib/customTracks";
@@ -28,6 +28,7 @@ import {
   useJapaneseVoices,
 } from "@/lib/voice";
 import { getAllVoiceLines } from "@/lib/voiceLines";
+import { countVoicePack, downloadVoicePackManifest, importVoicePackFiles, voicePackSource } from "@/lib/voicePack";
 import { type PrepareProgress, TtsError, type VoiceSource, countCachedVoices, prepareVoices } from "@/lib/ttsCache";
 import {
   VOICEVOX_DOWNLOAD_PAGE,
@@ -579,6 +580,93 @@ function VoicevoxSettings() {
   );
 }
 
+/** 自作の音声（手元の音声合成で作ったファイル）を読み込む */
+function VoicePackSettings() {
+  const voiceMode = useAppStore((s) => s.voiceMode);
+  const [counts, setCounts] = useState<Awaited<ReturnType<typeof countVoicePack>> | null>(null);
+  const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void countVoicePack().then((c) => !cancelled && setCounts(c));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onFiles = async (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    setImporting(true);
+    setMessage(null);
+    try {
+      const result = await importVoicePackFiles([...list]);
+      setCounts(await countVoicePack());
+      setMessage({
+        tone: result.imported > 0 ? "ok" : "error",
+        text:
+          result.imported > 0
+            ? `${result.imported} 個の音声を読み込みました${result.skipped.length > 0 ? `（名前が合わない ${result.skipped.length} 個は飛ばしました）` : ""}`
+            : "読み込める音声がありませんでした。ファイル名が female_xxxxxxxx.wav / male_xxxxxxxx.wav になっているか確認してください。",
+      });
+    } catch (err) {
+      setMessage({ tone: "error", text: `読み込めませんでした: ${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      setImporting(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg bg-zinc-800/60 p-3 text-sm">
+      <p className="text-xs text-zinc-300">
+        手元の音声合成（drama3 など）で作った音声ファイルを読み込んで、その声で読み上げます。
+        作るセリフの一覧（lines.json）と作り方は、リポジトリの <code className="font-mono">voice-pack/</code> フォルダにあります。
+      </p>
+      {counts && (
+        <p className="text-xs tabular-nums text-zinc-300">
+          読み込み済み: かわいい役 <b className="text-zinc-50">{counts.female}</b> / {counts.total}・渋い役{" "}
+          <b className="text-zinc-50">{counts.male}</b> / {counts.total}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={importing}
+          className="flex items-center gap-1 rounded-lg bg-fuchsia-600 px-3 py-1.5 font-bold hover:bg-fuchsia-500 disabled:opacity-60"
+        >
+          {importing ? <Loader2 className="size-4 animate-spin" /> : <FolderOpen className="size-4" />} 音声ファイルを読み込む
+        </button>
+        <button
+          type="button"
+          onClick={downloadVoicePackManifest}
+          className="flex items-center gap-1 rounded-lg bg-zinc-700 px-3 py-1.5 font-bold hover:bg-zinc-600"
+        >
+          <Download className="size-4" /> セリフの一覧（lines.json）
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept=".wav,.mp3,.ogg,.flac,.m4a,audio/*"
+          className="hidden"
+          onChange={(e) => void onFiles(e.target.files)}
+        />
+      </div>
+      <p className="text-xs text-zinc-400">作ったフォルダを開いて、中のファイルをすべて選んで（Ctrl + A）読み込んでください。同じファイルを読み込み直すと上書きします。</p>
+      {message && <p className={cn("text-xs", message.tone === "ok" ? "text-emerald-300" : "text-red-400")}>{message.text}</p>}
+      {usedGenders(voiceMode).map((gender) => (
+        <div key={gender} className="flex flex-wrap items-center gap-2">
+          <span className="text-zinc-300">{gender === "female" ? "かわいい役の声" : "渋い役の声"}</span>
+          <TestButton source={voicePackSource(gender)} sample={VOICE_SAMPLES[gender]} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const isBgmOn = useAppStore((s) => s.isBgmOn);
   const bgmNormalId = useAppStore((s) => s.bgmNormalId);
@@ -660,12 +748,13 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             ))}
           </div>
           {voiceMode !== "off" && (
-            <div className={cn("grid gap-1 rounded-lg bg-zinc-800 p-1 text-sm", GEMINI_ENABLED ? "grid-cols-3" : "grid-cols-2")}>
+            <div className={cn("grid gap-1 rounded-lg bg-zinc-800 p-1 text-sm", GEMINI_ENABLED ? "grid-cols-4" : "grid-cols-3")}>
               {(
                 [
                   ["browser", "ブラウザ標準"],
                   ["gemini", "Gemini"],
                   ["voicevox", "VOICEVOX"],
+                  ["pack", "自作の音声"],
                 ] as const
               )
                 .filter(([engine]) => engine !== "gemini" || GEMINI_ENABLED)
@@ -686,6 +775,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
           )}
           {voiceMode !== "off" && GEMINI_ENABLED && ttsEngine === "gemini" && <GeminiVoiceSettings />}
           {voiceMode !== "off" && ttsEngine === "voicevox" && <VoicevoxSettings />}
+          {voiceMode !== "off" && ttsEngine === "pack" && <VoicePackSettings />}
           {voiceMode !== "off" && ttsEngine !== "browser" && (
             <p className="text-xs font-bold text-zinc-400">ブラウザ標準の声（準備できていないセリフ・つながらないときに使います）</p>
           )}

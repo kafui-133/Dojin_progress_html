@@ -16,7 +16,8 @@
     "dev:crista": "concurrently -n app,bridge -c magenta,cyan \"next dev\" \"node bridge/index.mjs\"",
     "build:desktop": "node scripts/build-desktop.mjs",
     "desktop": "npm run build:desktop && electron .",
-    "dist:win": "npm run build:desktop && electron-builder --win --publish never"
+    "dist:win": "npm run build:desktop && electron-builder --win --publish never",
+    "voice:lines": "node scripts/voice-pack-lines.mjs"
   },
   "dependencies": {
     "ws": "^8.22.0"

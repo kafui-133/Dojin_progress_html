@@ -201,5 +201,5 @@ export interface PomodoroState {
   totalMs: number;
 }
 
-/** 読み上げの声: ブラウザ標準 / Gemini の自然な声 / VOICEVOX */
-export type TtsEngine = "browser" | "gemini" | "voicevox";
+/** 読み上げの声: ブラウザ標準 / Gemini の自然な声 / VOICEVOX / 自分で作った音声ファイル */
+export type TtsEngine = "browser" | "gemini" | "voicevox" | "pack";
