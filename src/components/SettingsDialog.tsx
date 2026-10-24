@@ -29,6 +29,7 @@ import {
 } from "@/lib/voice";
 import { getAllVoiceLines } from "@/lib/voiceLines";
 import { countVoicePack, downloadVoicePackManifest, importVoicePackFiles, voicePackSource } from "@/lib/voicePack";
+import { VOICE_PACK_ROLES, VOICE_PACK_ROLE_INFO, VOICE_PACK_VOICES } from "@/lib/voicePackManifest";
 import { type PrepareProgress, TtsError, type VoiceSource, countCachedVoices, prepareVoices } from "@/lib/ttsCache";
 import {
   VOICEVOX_DOWNLOAD_PAGE,
@@ -583,10 +584,16 @@ function VoicevoxSettings() {
 /** 自作の音声（手元の音声合成で作ったファイル）を読み込む */
 function VoicePackSettings() {
   const voiceMode = useAppStore((s) => s.voiceMode);
+  const packFemale = useAppStore((s) => s.voicePackFemale);
+  const packMale = useAppStore((s) => s.voicePackMale);
+  const updateSettings = useAppStore((s) => s.updateSettings);
   const [counts, setCounts] = useState<Awaited<ReturnType<typeof countVoicePack>> | null>(null);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [importing, setImporting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const selected: Record<CharacterGender, string> = { female: packFemale, male: packMale };
+  const loadedVoices = counts ? VOICE_PACK_VOICES.filter((voice) => counts.byVoice[voice.id] > 0) : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -608,7 +615,7 @@ function VoicePackSettings() {
         text:
           result.imported > 0
             ? `${result.imported} 個の音声を読み込みました${result.skipped.length > 0 ? `（名前が合わない ${result.skipped.length} 個は飛ばしました）` : ""}`
-            : "読み込める音声がありませんでした。ファイル名が female_xxxxxxxx.wav / male_xxxxxxxx.wav になっているか確認してください。",
+            : "読み込める音声がありませんでした。ファイル名が cute1_xxxxxxxx.wav のように「声の ID_セリフの ID」になっているか確認してください。",
       });
     } catch (err) {
       setMessage({ tone: "error", text: `読み込めませんでした: ${err instanceof Error ? err.message : String(err)}` });
@@ -626,8 +633,9 @@ function VoicePackSettings() {
       </p>
       {counts && (
         <p className="text-xs tabular-nums text-zinc-300">
-          読み込み済み: かわいい役 <b className="text-zinc-50">{counts.female}</b> / {counts.total}・渋い役{" "}
-          <b className="text-zinc-50">{counts.male}</b> / {counts.total}
+          {loadedVoices.length > 0
+            ? `読み込み済み: ${loadedVoices.length} 種類の声（1つの声につき ${counts.total} セリフ）`
+            : "まだ音声を読み込んでいません"}
         </p>
       )}
       <div className="flex flex-wrap gap-2">
@@ -658,9 +666,29 @@ function VoicePackSettings() {
       <p className="text-xs text-zinc-400">作ったフォルダを開いて、中のファイルをすべて選んで（Ctrl + A）読み込んでください。同じファイルを読み込み直すと上書きします。</p>
       {message && <p className={cn("text-xs", message.tone === "ok" ? "text-emerald-300" : "text-red-400")}>{message.text}</p>}
       {usedGenders(voiceMode).map((gender) => (
-        <div key={gender} className="flex flex-wrap items-center gap-2">
-          <span className="text-zinc-300">{gender === "female" ? "かわいい役の声" : "渋い役の声"}</span>
-          <TestButton source={voicePackSource(gender)} sample={VOICE_SAMPLES[gender]} />
+        <div key={gender} className="flex flex-col gap-1 text-sm">
+          <span className="text-zinc-300">{gender === "female" ? "「女性」で使う声" : "「渋い男性」で使う声"}</span>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={selected[gender]}
+              onChange={(e) =>
+                updateSettings(gender === "female" ? { voicePackFemale: e.target.value } : { voicePackMale: e.target.value })
+              }
+              className="min-w-0 flex-1 rounded-lg bg-zinc-800 px-3 py-2"
+            >
+              {VOICE_PACK_ROLES.map((role) => (
+                <optgroup key={role} label={VOICE_PACK_ROLE_INFO[role].label}>
+                  {VOICE_PACK_VOICES.filter((voice) => voice.role === role).map((voice) => (
+                    <option key={voice.id} value={voice.id}>
+                      {voice.label}
+                      {counts ? `（${counts.byVoice[voice.id]} / ${counts.total}）` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <TestButton source={voicePackSource(selected[gender])} sample={VOICE_SAMPLES[gender]} />
+          </div>
         </div>
       ))}
     </div>

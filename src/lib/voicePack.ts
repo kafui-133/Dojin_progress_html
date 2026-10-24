@@ -1,8 +1,11 @@
 import { TtsError, type VoiceSource, countCachedVoices, putCachedVoice } from "@/lib/ttsCache";
 import {
-  type VoicePackGender,
+  DEFAULT_PACK_FEMALE,
+  DEFAULT_PACK_MALE,
+  VOICE_PACK_VOICES,
   buildVoicePackManifest,
   getVoicePackLines,
+  getVoicePackVoice,
   parseVoicePackFileName,
 } from "@/lib/voicePackManifest";
 
@@ -11,21 +14,26 @@ import {
  * 読み込んだ音声は、ほかの声と同じ保存領域（IndexedDB）に入る。無いセリフはブラウザ標準の声で読む。
  */
 
-const LABEL: Record<VoicePackGender, string> = { female: "自作の音声（かわいい役）", male: "自作の音声（渋い役）" };
+/** 以前（かわいい役・渋い役の2つだけだったころ）に読み込んだ音声をそのまま使えるよう、保存のキーを引き継ぐ */
+const LEGACY_SOURCE_IDS: Record<string, string> = {
+  [DEFAULT_PACK_FEMALE]: "pack-female",
+  [DEFAULT_PACK_MALE]: "pack-male",
+};
 
-const sources = new Map<VoicePackGender, VoiceSource>();
+const sources = new Map<string, VoiceSource>();
 
-export function voicePackSource(gender: VoicePackGender): VoiceSource {
-  let source = sources.get(gender);
+export function voicePackSource(voiceId: string): VoiceSource {
+  const voice = getVoicePackVoice(voiceId) ?? getVoicePackVoice(DEFAULT_PACK_FEMALE)!;
+  let source = sources.get(voice.id);
   if (!source) {
     source = {
-      id: `pack-${gender}`,
-      label: LABEL[gender],
+      id: LEGACY_SOURCE_IDS[voice.id] ?? `pack-${voice.id}`,
+      label: `自作の音声（${voice.label}）`,
       local: false,
       // その場では作れない（ファイルを読み込んでもらう）
       synthesize: () => Promise.reject(new TtsError("このセリフの音声ファイルはまだ読み込まれていません", "unavailable")),
     };
-    sources.set(gender, source);
+    sources.set(voice.id, source);
   }
   return source;
 }
@@ -47,20 +55,18 @@ export async function importVoicePackFiles(files: File[]): Promise<VoicePackImpo
       result.skipped.push(file.name);
       continue;
     }
-    await putCachedVoice(voicePackSource(parsed.gender), line.reading, file);
+    await putCachedVoice(voicePackSource(parsed.voiceId), line.reading, file);
     result.imported++;
   }
   return result;
 }
 
-/** 読み込み済みの数（男女それぞれ） */
-export async function countVoicePack(): Promise<Record<VoicePackGender, number> & { total: number }> {
+/** 読み込み済みの数（声ごと） */
+export async function countVoicePack(): Promise<{ byVoice: Record<string, number>; total: number }> {
   const readings = getVoicePackLines().map((line) => line.reading);
-  return {
-    female: await countCachedVoices(voicePackSource("female"), readings),
-    male: await countCachedVoices(voicePackSource("male"), readings),
-    total: readings.length,
-  };
+  const byVoice: Record<string, number> = {};
+  for (const voice of VOICE_PACK_VOICES) byVoice[voice.id] = await countCachedVoices(voicePackSource(voice.id), readings);
+  return { byVoice, total: readings.length };
 }
 
 /** セリフの一覧（lines.json）をダウンロードする */

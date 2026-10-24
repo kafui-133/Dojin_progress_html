@@ -164,6 +164,8 @@ export interface AppSettings {
   geminiMaleCharacter: string;     // Gemini の男性キャラクター
   voicevoxFemaleStyle: number;     // VOICEVOX の女性側の話者 ID
   voicevoxMaleStyle: number;       // VOICEVOX の男性側の話者 ID
+  voicePackFemale: string;         // 自作の音声で「女性」側に使う声の ID（cute1 など）
+  voicePackMale: string;           // 自作の音声で「男性」側に使う声の ID（shibui1 など）
   restBgmId: string;               // 休憩中に流すゆったりした BGM
   zoneDailyLimit: number;          // 1日に ZONE に入れる回数（修羅場モードでは無制限）
   shurabaMode: boolean;            // 修羅場モード（ZONE の上限なし）

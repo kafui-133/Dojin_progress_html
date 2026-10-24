@@ -8,6 +8,7 @@ import { DEFAULT_BGM_FEVER, DEFAULT_BGM_NORMAL } from "@/lib/soundManager";
 import { PAGE_COMPLETE_LINE, STAGE_BY_ID, getBoardStats, isPageComplete, resizePages } from "@/lib/stages";
 import { DEFAULT_VOICEVOX_FEMALE, DEFAULT_VOICEVOX_MALE } from "@/lib/voicevox";
 import { LINES } from "@/lib/voiceLines";
+import { DEFAULT_PACK_FEMALE, DEFAULT_PACK_MALE } from "@/lib/voicePackManifest";
 import type {
   AppSettings,
   CspUsageDay,
@@ -370,6 +371,8 @@ const initialSettings: AppSettings = {
   geminiMaleCharacter: DEFAULT_MALE_CHARACTER,
   voicevoxFemaleStyle: DEFAULT_VOICEVOX_FEMALE,
   voicevoxMaleStyle: DEFAULT_VOICEVOX_MALE,
+  voicePackFemale: DEFAULT_PACK_FEMALE,
+  voicePackMale: DEFAULT_PACK_MALE,
   restBgmId: DEFAULT_REST_BGM,
   zoneDailyLimit: DEFAULT_ZONE_DAILY_LIMIT,
   shurabaMode: false,

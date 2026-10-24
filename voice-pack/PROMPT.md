@@ -7,19 +7,20 @@
 ## 入力
 
 - `voice-pack/lines.json`: 作るセリフの一覧と、作ってほしいファイル名
-  - `voices.female` / `voices.male`: 2種類の声のイメージ（かわいい役・渋い役）
+  - `roles`: 6つの役（かわいい役・渋い役・男性・お姉さん・小学生の女の子・小学生の男の子）の声のイメージ
+  - `voices`: 作る声の一覧（`cute1` など。役ごとに声色違いが複数ある）
   - `moods`: 演技の方向（`hype` = カットインの叫び、`calm` = 落ち着いたお知らせ）
   - `lines[]`: 各セリフ
-    - `reading`: **この文字を読ませる**
+    - `readings.<役>`: **この文字を読ませる**（役ごとに語尾が少し違う）
     - `text`: 画面に出る文字（参考）
     - `mood`: 演技の方向
-    - `files.female` / `files.male`: 出力するファイル名
+    - `files.<声の ID>`: 出力するファイル名
 
 ## 出力
 
-- `voice-pack/output/` に、`lines[].files.female` と `lines[].files.male` の名前で **1つのフォルダにまとめて** 保存する
-  - 例: `voice-pack/output/female_eacb69a7.wav`
-  - 全部で `lines` の数 × 2 ファイル
+- `voice-pack/output/` に、`lines[].files` の名前で **1つのフォルダにまとめて** 保存する
+  - 例: `voice-pack/output/cute1_eacb69a7.wav`
+  - 全部で `lines` の数 × `voices` の数 ファイル
 - 形式: WAV、モノラル、サンプリングレート 24kHz 以上
 - 前後の無音は削る（しきい値は -45dBFS くらい。言葉の頭・お尻は切らない）
 - 音量はそろえる（ピーク -1dBFS くらい）
@@ -54,7 +55,7 @@
 
 ## 守ること
 
-- `voice-pack/lines.json` は書き換えない。ファイル名の決まり（`female_<id>.wav` / `male_<id>.wav`）を変えない
+- `voice-pack/lines.json` は書き換えない。ファイル名の決まり（`<声の ID>_<id>.wav`）を変えない（lines.json はアプリの `npm run voice:lines` で作り直す）
 - 実在の声優・人物の声をまねる（声のクローンをする）ことはしない。参照音声を使う場合は、ユーザーが使ってよい音声だけにする
 - drama3-small のライセンス（作った音声を人に配ってよいか、商用はどうか）を確認して、ユーザーに伝える
 - `voice-pack/output/` の音声は Git にコミットしない（.gitignore 済み）

@@ -226,7 +226,7 @@ export function voiceSources(settings: AppSettings): Record<VoiceGender, VoiceSo
     };
   }
   if (settings.ttsEngine === "pack") {
-    return { female: voicePackSource("female"), male: voicePackSource("male") };
+    return { female: voicePackSource(settings.voicePackFemale), male: voicePackSource(settings.voicePackMale) };
   }
   return { female: null, male: null };
 }
