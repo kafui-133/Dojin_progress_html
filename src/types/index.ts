@@ -162,8 +162,6 @@ export interface AppSettings {
   ttsEngine: TtsEngine;     // 読み上げに使う声
   geminiFemaleCharacter: string;   // Gemini の女性キャラクター
   geminiMaleCharacter: string;     // Gemini の男性キャラクター
-  voicevoxFemaleStyle: number;     // VOICEVOX の女性側の話者 ID
-  voicevoxMaleStyle: number;       // VOICEVOX の男性側の話者 ID
   voicePackFemale: string;         // 自作の音声で「女性」側に使う声の ID（cute1 など）
   voicePackMale: string;           // 自作の音声で「男性」側に使う声の ID（shibui1 など）
   restBgmId: string;               // 休憩中に流すゆったりした BGM
@@ -203,5 +201,5 @@ export interface PomodoroState {
   totalMs: number;
 }
 
-/** 読み上げの声: ブラウザ標準 / Gemini の自然な声 / VOICEVOX / 自分で作った音声ファイル */
-export type TtsEngine = "browser" | "gemini" | "voicevox" | "pack";
+/** 読み上げの声: ブラウザ標準 / Gemini の自然な声 / 自分で作った音声ファイル */
+export type TtsEngine = "browser" | "gemini" | "pack";

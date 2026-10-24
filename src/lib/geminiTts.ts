@@ -195,7 +195,6 @@ export function geminiSource(character: VoiceCharacter): VoiceSource {
     // 以前の保存とキーをそろえる（声の名前とキャラクターが同じなら同じ音声）
     id: `${character.voiceName}|${character.id}`,
     label: character.label,
-    local: false,
     synthesize: (text) => {
       const apiKey = loadApiKey();
       if (!apiKey) return Promise.reject(new TtsError("API キーを入力してください", "auth"));

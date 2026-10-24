@@ -6,7 +6,6 @@ import { IS_DESKTOP } from "@/lib/edition";
 import { DEFAULT_FEMALE_CHARACTER, DEFAULT_MALE_CHARACTER } from "@/lib/geminiTts";
 import { DEFAULT_BGM_FEVER, DEFAULT_BGM_NORMAL } from "@/lib/soundManager";
 import { PAGE_COMPLETE_LINE, STAGE_BY_ID, getBoardStats, isPageComplete, resizePages } from "@/lib/stages";
-import { DEFAULT_VOICEVOX_FEMALE, DEFAULT_VOICEVOX_MALE } from "@/lib/voicevox";
 import { LINES } from "@/lib/voiceLines";
 import { DEFAULT_PACK_FEMALE, DEFAULT_PACK_MALE } from "@/lib/voicePackManifest";
 import type {
@@ -369,8 +368,6 @@ const initialSettings: AppSettings = {
   ttsEngine: "browser",
   geminiFemaleCharacter: DEFAULT_FEMALE_CHARACTER,
   geminiMaleCharacter: DEFAULT_MALE_CHARACTER,
-  voicevoxFemaleStyle: DEFAULT_VOICEVOX_FEMALE,
-  voicevoxMaleStyle: DEFAULT_VOICEVOX_MALE,
   voicePackFemale: DEFAULT_PACK_FEMALE,
   voicePackMale: DEFAULT_PACK_MALE,
   restBgmId: DEFAULT_REST_BGM,
@@ -942,7 +939,7 @@ export const useAppStore = create<AppState>()(
     {
       name: "syuraba-booster",
       storage: createJSONStorage(() => localStorage),
-      version: 8,
+      version: 9,
       migrate: (persisted, version) => {
         const state = { ...(persisted as Record<string, unknown>) } as Partial<AppState> & {
           manuscript?: Manuscript;
@@ -978,6 +975,8 @@ export const useAppStore = create<AppState>()(
           const totalMs = (state.pomodoro.mode === "break" ? DEFAULT_BREAK_MIN : DEFAULT_FOCUS_MIN) * 60_000;
           state.pomodoro = { ...state.pomodoro, totalMs };
         }
+        // v9 で VOICEVOX の読み上げをやめた。選んでいた人はブラウザ標準の声にする
+        if ((state.ttsEngine as string) === "voicevox") state.ttsEngine = "browser";
         delete state.manuscript;
         delete state.dailyStats;
         return state as AppState;

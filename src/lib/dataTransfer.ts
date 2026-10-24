@@ -169,6 +169,8 @@ export function parseImport(text: string): ExportFile {
           settings[key],
         ]),
       ) as Partial<AppSettings>;
+      // VOICEVOX の読み上げはなくなったので、以前の保存データはブラウザ標準の声にする
+      if ((file.settings.ttsEngine as string | undefined) === "voicevox") file.settings.ttsEngine = "browser";
     }
     if (typeof data.activeProjectId === "string") file.activeProjectId = data.activeProjectId;
     if (data.cspUsage !== undefined) file.cspUsage = sanitizeCspUsage(data.cspUsage);

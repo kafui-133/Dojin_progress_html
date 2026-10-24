@@ -6,16 +6,15 @@ import { soundManager } from "@/lib/soundManager";
 import { type VoiceSource, generateShared, getCachedVoice } from "@/lib/ttsCache";
 import { toReading } from "@/lib/voiceLines";
 import { voicePackSource } from "@/lib/voicePack";
-import { voicevoxSource } from "@/lib/voicevox";
 import type { AppSettings } from "@/types";
 
 /**
  * カットインの文字の読み上げ。
  * - ブラウザ標準: 内蔵の音声合成（Web Speech API）。Windows の Edge なら「Nanami」「Keita」、
  *   Chrome なら「Google 日本語」や Windows 標準の「Haruka」「Ichiro」などが使える。
- * - Gemini（Google AI Studio の自然な声）・VOICEVOX: 作って保存した音声を鳴らす。
- *   まだ無いセリフは、VOICEVOX ならその場で作って鳴らし、
- *   Gemini（または VOICEVOX が間に合わないとき）はブラウザ標準の声で読みつつ次回用に作っておく。
+ * - Gemini（Google AI Studio の自然な声）: 作って保存した音声を鳴らす。
+ *   まだ無いセリフはブラウザ標準の声で読みつつ、次回用に作っておく。
+ * - 自作の音声: 読み込んだ音声ファイルを鳴らす（無いセリフはブラウザ標準の声）。
  */
 
 export type VoiceMode = "off" | "female" | "male" | "alternate";
@@ -99,13 +98,11 @@ export interface SpeakOptions {
   mode: VoiceMode;
   femaleVoiceUri?: string;
   maleVoiceUri?: string;
-  /** 外部の声（Gemini・VOICEVOX）。null ならブラウザ標準の声 */
+  /** 外部の声（Gemini・自作の音声）。null ならブラウザ標準の声 */
   sources?: Record<VoiceGender, VoiceSource | null>;
   volume?: number;
 }
 
-/** PC 内の VOICEVOX は、この時間までなら作り終わるのを待ってから鳴らす */
-const LOCAL_WAIT_MS = 2500;
 
 // ---- 作った音声の再生 ----
 
@@ -140,8 +137,6 @@ function playVoiceBlob(key: string, blob: Blob, volume: number): void {
   target.play();
 }
 
-const sleep = (ms: number) => new Promise<null>((resolve) => setTimeout(() => resolve(null), ms));
-
 export function speak(text: string, options: SpeakOptions): void {
   const { mode, volume = 1 } = options;
   if (mode === "off") return;
@@ -173,14 +168,6 @@ export function speak(text: string, options: SpeakOptions): void {
     }
     const job = generateShared(source, reading);
     job.catch(() => {});
-    if (source.local) {
-      const blob = await Promise.race([job, sleep(LOCAL_WAIT_MS)]).catch(() => null);
-      if (token !== speakToken) return;
-      if (blob) {
-        playVoiceBlob(`${source.id}|${reading}`, blob, volume);
-        return;
-      }
-    }
     // 間に合わない・作れないときはブラウザの声で読む（作れたものは次回から使われる）
     speakWithBrowser(reading, gender, options);
   })();
@@ -217,12 +204,6 @@ export function voiceSources(settings: AppSettings): Record<VoiceGender, VoiceSo
     return {
       female: geminiSource(getCharacter(settings.geminiFemaleCharacter, "female")),
       male: geminiSource(getCharacter(settings.geminiMaleCharacter, "male")),
-    };
-  }
-  if (settings.ttsEngine === "voicevox") {
-    return {
-      female: voicevoxSource(settings.voicevoxFemaleStyle, "female"),
-      male: voicevoxSource(settings.voicevoxMaleStyle, "male"),
     };
   }
   if (settings.ttsEngine === "pack") {

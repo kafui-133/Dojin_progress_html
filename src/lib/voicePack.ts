@@ -29,7 +29,6 @@ export function voicePackSource(voiceId: string): VoiceSource {
     source = {
       id: LEGACY_SOURCE_IDS[voice.id] ?? `pack-${voice.id}`,
       label: `自作の音声（${voice.label}）`,
-      local: false,
       // その場では作れない（ファイルを読み込んでもらう）
       synthesize: () => Promise.reject(new TtsError("このセリフの音声ファイルはまだ読み込まれていません", "unavailable")),
     };

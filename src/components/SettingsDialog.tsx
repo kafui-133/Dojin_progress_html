@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, ExternalLink, FolderOpen, Loader2, Play, Plus, RefreshCw, Sparkles, Square, Trash2, X } from "lucide-react";
+import { Download, ExternalLink, FolderOpen, Loader2, Play, Plus, Sparkles, Square, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCustomTracks } from "@/lib/customTracks";
@@ -31,12 +31,6 @@ import { getAllVoiceLines } from "@/lib/voiceLines";
 import { countVoicePack, downloadVoicePackManifest, importVoicePackFiles, voicePackSource } from "@/lib/voicePack";
 import { VOICE_PACK_ROLES, VOICE_PACK_ROLE_INFO, VOICE_PACK_VOICES } from "@/lib/voicePackManifest";
 import { type PrepareProgress, TtsError, type VoiceSource, countCachedVoices, prepareVoices } from "@/lib/ttsCache";
-import {
-  VOICEVOX_DOWNLOAD_PAGE,
-  useVoicevoxStyles,
-  voicevoxCredit,
-  voicevoxSource,
-} from "@/lib/voicevox";
 import { useAppStore } from "@/store/useAppStore";
 
 const VOICE_SAMPLES: Record<VoiceGender, string> = {
@@ -481,106 +475,6 @@ function GeminiVoiceSettings() {
   );
 }
 
-function VoicevoxSettings() {
-  const femaleStyle = useAppStore((s) => s.voicevoxFemaleStyle);
-  const maleStyle = useAppStore((s) => s.voicevoxMaleStyle);
-  const voiceMode = useAppStore((s) => s.voiceMode);
-  const updateSettings = useAppStore((s) => s.updateSettings);
-  const { status, styles, retry } = useVoicevoxStyles(true);
-
-  const selected: Record<CharacterGender, number> = { female: femaleStyle, male: maleStyle };
-  const labelOf = (id: number) => {
-    const style = styles.find((s) => s.id === id);
-    return style ? `${style.speakerName}（${style.styleName}）` : `ID ${id}`;
-  };
-  const sources = usedGenders(voiceMode).map((gender) =>
-    voicevoxSource(selected[gender], gender, labelOf(selected[gender])),
-  );
-
-  if (status !== "ok") {
-    return (
-      <div className="flex flex-col gap-2 rounded-lg bg-zinc-800/60 p-3 text-sm">
-        {status === "checking" ? (
-          <p className="flex items-center gap-2 text-zinc-300">
-            <Loader2 className="size-4 animate-spin" /> VOICEVOX を探しています…
-          </p>
-        ) : (
-          <>
-            <p className="text-amber-200">
-              VOICEVOX が見つかりません。PC で VOICEVOX を起動してから「もう一度探す」を押してください。
-            </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={retry}
-                className="flex items-center gap-1 rounded-lg bg-fuchsia-600 px-3 py-1.5 font-bold hover:bg-fuchsia-500"
-              >
-                <RefreshCw className="size-4" /> もう一度探す
-              </button>
-              <a
-                href={VOICEVOX_DOWNLOAD_PAGE}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 text-xs text-fuchsia-300 hover:underline"
-              >
-                VOICEVOX をダウンロード（無料） <ExternalLink className="size-3" />
-              </a>
-            </div>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-3 rounded-lg bg-zinc-800/60 p-3 text-sm">
-      <p className="flex items-center gap-1.5 text-xs text-emerald-300">
-        <span className="size-2 rounded-full bg-emerald-400" /> VOICEVOX に接続しました（{styles.length} 種類の声）
-      </p>
-      {(["female", "male"] as const).map((gender) => (
-        <div key={gender} className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-300">{gender === "female" ? "かわいい役の声" : "渋い役の声"}</span>
-          <div className="flex flex-wrap gap-2">
-            <select
-              value={selected[gender]}
-              onChange={(e) =>
-                updateSettings(
-                  gender === "female"
-                    ? { voicevoxFemaleStyle: Number(e.target.value) }
-                    : { voicevoxMaleStyle: Number(e.target.value) },
-                )
-              }
-              className="min-w-0 flex-1 rounded-lg bg-zinc-800 px-3 py-2"
-            >
-              {!styles.some((s) => s.id === selected[gender]) && (
-                <option value={selected[gender]}>ID {selected[gender]}（見つかりません）</option>
-              )}
-              {styles.map((style) => (
-                <option key={style.id} value={style.id}>
-                  {style.speakerName}（{style.styleName}）
-                </option>
-              ))}
-            </select>
-            <TestButton
-              source={voicevoxSource(selected[gender], gender, labelOf(selected[gender]))}
-              sample={VOICE_SAMPLES[gender]}
-            />
-          </div>
-        </div>
-      ))}
-      <p className="text-xs text-zinc-500">
-        クレジット: {voicevoxCredit(styles, usedGenders(voiceMode).map((g) => selected[g])) || "VOICEVOX"}
-        （配信や動画に音声が入る場合は、この表記を載せてください）
-      </p>
-      <PreparePanel
-        sources={sources}
-        intervalMs={0}
-        note="VOICEVOX は PC の中で声を作るので、準備しなくてもその場で読み上げます。前もって準備しておくと、描いている最中の読み上げがより速くなります。"
-      />
-    </div>
-  );
-}
-
 /** 自作の音声（手元の音声合成で作ったファイル）を読み込む */
 function VoicePackSettings() {
   const voiceMode = useAppStore((s) => s.voiceMode);
@@ -776,12 +670,11 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             ))}
           </div>
           {voiceMode !== "off" && (
-            <div className={cn("grid gap-1 rounded-lg bg-zinc-800 p-1 text-sm", GEMINI_ENABLED ? "grid-cols-4" : "grid-cols-3")}>
+            <div className={cn("grid gap-1 rounded-lg bg-zinc-800 p-1 text-sm", GEMINI_ENABLED ? "grid-cols-3" : "grid-cols-2")}>
               {(
                 [
                   ["browser", "ブラウザ標準"],
                   ["gemini", "Gemini"],
-                  ["voicevox", "VOICEVOX"],
                   ["pack", "自作の音声"],
                 ] as const
               )
@@ -802,7 +695,6 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             </div>
           )}
           {voiceMode !== "off" && GEMINI_ENABLED && ttsEngine === "gemini" && <GeminiVoiceSettings />}
-          {voiceMode !== "off" && ttsEngine === "voicevox" && <VoicevoxSettings />}
           {voiceMode !== "off" && ttsEngine === "pack" && <VoicePackSettings />}
           {voiceMode !== "off" && ttsEngine !== "browser" && (
             <p className="text-xs font-bold text-zinc-400">ブラウザ標準の声（準備できていないセリフ・つながらないときに使います）</p>
@@ -810,7 +702,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
           {voices.length === 0 ? (
             <p className="rounded-lg bg-amber-500/10 p-3 text-xs text-amber-200">
               {IS_DESKTOP
-                ? "日本語の声が見つかりません。Windows の「設定 → 時刻と言語 → 音声」で日本語の音声を追加するか、VOICEVOX を使ってください。"
+                ? "日本語の声が見つかりません。Windows の「設定 → 時刻と言語 → 音声」で日本語の音声を追加するか、「自作の音声」を使ってください。"
                 : "このブラウザで使える日本語の声が見つかりません。Windows の Edge か Chrome で開いてください。"}
             </p>
           ) : (
