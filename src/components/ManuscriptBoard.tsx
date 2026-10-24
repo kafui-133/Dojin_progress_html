@@ -7,6 +7,7 @@ import { STAGES, getBoardStats, isPageComplete } from "@/lib/stages";
 import { cn } from "@/lib/utils";
 import { useActiveProject, useAppStore } from "@/store/useAppStore";
 import type { StageId } from "@/types";
+import Icon from "@/components/Icon";
 
 function formatDay(ms: number): string {
   const d = new Date(ms);
@@ -47,20 +48,22 @@ export default function ManuscriptBoard() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <h3 className="text-sm font-black">📖 原稿ボード</h3>
+        <h3 className="flex items-center gap-1.5 text-sm font-black">
+          <Icon name="manuscript" className="size-6" /> 原稿ボード
+        </h3>
         <span className="text-xs text-zinc-400 tabular-nums">
           {board.done} / {board.total} 工程・{board.pagesComplete}ページ完成
         </span>
       </div>
 
-      <div ref={scrollRef} className="max-h-[420px] overflow-y-auto rounded-lg border border-white/10">
+      <div ref={scrollRef} className="max-h-[420px] overflow-y-auto rounded-lg border border-zinc-600">
         <table className="w-full table-fixed border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-zinc-900">
             <tr>
               <th className="w-10 py-1.5 text-zinc-500">P</th>
               {STAGES.map((stage) => (
                 <th key={stage.id} className="py-1.5 font-bold text-zinc-200">
-                  <span className="block text-base leading-none">{stage.emoji}</span>
+                  <Icon name={stage.icon} className="mx-auto block size-6" />
                   <span className="inline-flex items-center gap-1">
                     <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: stage.color }} aria-hidden />
                     <span className="hidden sm:inline">{stage.label}</span>
@@ -81,7 +84,7 @@ export default function ManuscriptBoard() {
                 <tr
                   key={i}
                   ref={isCurrent ? currentRowRef : undefined}
-                  className={cn("border-t border-white/5", isCurrent && "bg-fuchsia-500/10")}
+                  className={cn("border-t border-zinc-700", isCurrent && "bg-fuchsia-500/10")}
                 >
                   <td className={cn("text-center font-black tabular-nums", complete ? "text-emerald-400" : "text-zinc-400")}>
                     {complete ? <Check className="mx-auto size-4" aria-label={`P${i + 1} 完成`} /> : i + 1}
@@ -98,7 +101,7 @@ export default function ManuscriptBoard() {
                           aria-pressed={done}
                           className={cn(
                             "h-8 w-full rounded-md font-bold tabular-nums transition active:scale-90",
-                            done ? "text-zinc-950 shadow-inner" : "bg-zinc-800/80 text-zinc-500 hover:bg-zinc-700 hover:text-white",
+                            done ? "text-zinc-950 shadow-inner" : "bg-zinc-800/80 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-50",
                           )}
                           style={done ? { backgroundColor: stage.color } : undefined}
                         >

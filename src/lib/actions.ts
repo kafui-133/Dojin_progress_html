@@ -1,8 +1,9 @@
+import type { IconName } from "@/components/Icon";
 import type { ProgressActionType } from "@/types";
 
 export interface ActionDefinition {
   label: string;
-  emoji: string;
+  icon: IconName;
   /** 倍率をかける前の獲得EXP */
   exp: number;
   /** 進む completedPages の単位数 */
@@ -15,42 +16,42 @@ export interface ActionDefinition {
 export const ACTIONS: Record<ProgressActionType, ActionDefinition> = {
   paneling: {
     label: "1ページコマ割った！",
-    emoji: "📐",
+    icon: "ruler",
     exp: 10_000,
     pages: 1,
     cutIns: ["神コマ割り！", "構図が決まった！", "ネーム突破！"],
   },
   panel: {
     label: "1コマ描いた！",
-    emoji: "🔥",
+    icon: "gpen",
     exp: 10_000,
     pages: 1,
     cutIns: ["神作画！", "ペン入れ完了！", "作画崩壊回避！"],
   },
   balloon: {
     label: "吹き出し置いた！",
-    emoji: "💬",
+    icon: "balloon",
     exp: 10_000,
     pages: 1,
     cutIns: ["吹き出し配置完了！", "読みやすさ爆上げ！", "ナイス配置！"],
   },
   dialogue: {
     label: "セリフ書いた！",
-    emoji: "🗯️",
+    icon: "shout",
     exp: 10_000,
     pages: 1,
     cutIns: ["名ゼリフ誕生！", "キャラが喋った！", "エモさ限界突破！"],
   },
   save: {
     label: "クリスタで保存（1コマ完成）",
-    emoji: "💾",
+    icon: "floppy",
     exp: 10_000,
     pages: 1,
     cutIns: ["1コマ完成！", "保存よし！", "原稿が進んだ！"],
   },
   text: {
     label: "500文字書いた！",
-    emoji: "✍️",
+    icon: "pencil",
     exp: 10_000,
     pages: 1,
     cutIns: ["修羅場突破！", "筆が乗ってる！", "名文誕生！"],

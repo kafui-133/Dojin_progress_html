@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Loader2, Play, Plus, RefreshCw, Sparkles, Square, Trash2, X } from "lucide-react";
+import { Download, ExternalLink, FolderOpen, Loader2, Play, Plus, Sparkles, Square, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCustomTracks } from "@/lib/customTracks";
@@ -28,13 +28,9 @@ import {
   useJapaneseVoices,
 } from "@/lib/voice";
 import { getAllVoiceLines } from "@/lib/voiceLines";
+import { countVoicePack, downloadVoicePackManifest, importVoicePackFiles, voicePackSource } from "@/lib/voicePack";
+import { VOICE_PACK_ROLES, VOICE_PACK_ROLE_INFO, VOICE_PACK_VOICES } from "@/lib/voicePackManifest";
 import { type PrepareProgress, TtsError, type VoiceSource, countCachedVoices, prepareVoices } from "@/lib/ttsCache";
-import {
-  VOICEVOX_DOWNLOAD_PAGE,
-  useVoicevoxStyles,
-  voicevoxCredit,
-  voicevoxSource,
-} from "@/lib/voicevox";
 import { useAppStore } from "@/store/useAppStore";
 
 const VOICE_SAMPLES: Record<VoiceGender, string> = {
@@ -44,8 +40,8 @@ const VOICE_SAMPLES: Record<VoiceGender, string> = {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-3 border-t border-white/10 pt-4 first:border-t-0 first:pt-0">
-      <h3 className="text-sm font-black text-fuchsia-300">{title}</h3>
+    <section className="flex flex-col gap-3 border-t border-zinc-600 pt-4 first:border-t-0 first:pt-0">
+      <h3 className="border-l-4 border-fuchsia-500 pl-2 text-sm font-black text-zinc-50">{title}</h3>
       {children}
     </section>
   );
@@ -180,7 +176,7 @@ function CustomTrackList() {
                 type="button"
                 onClick={() => soundManager.preview(track.id)}
                 aria-label={`${track.name} を試聴`}
-                className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+                className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50"
               >
                 <Play className="size-4" />
               </button>
@@ -337,7 +333,7 @@ function PreparePanel({ sources, intervalMs, note }: { sources: VoiceSource[]; i
   const complete = shown !== null && shown.done >= shown.total;
 
   return (
-    <div className="flex flex-col gap-2 border-t border-white/10 pt-3">
+    <div className="flex flex-col gap-2 border-t border-zinc-600 pt-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-zinc-300">
           セリフの声
@@ -479,102 +475,116 @@ function GeminiVoiceSettings() {
   );
 }
 
-function VoicevoxSettings() {
-  const femaleStyle = useAppStore((s) => s.voicevoxFemaleStyle);
-  const maleStyle = useAppStore((s) => s.voicevoxMaleStyle);
+/** 自作の音声（手元の音声合成で作ったファイル）を読み込む */
+function VoicePackSettings() {
   const voiceMode = useAppStore((s) => s.voiceMode);
+  const packFemale = useAppStore((s) => s.voicePackFemale);
+  const packMale = useAppStore((s) => s.voicePackMale);
   const updateSettings = useAppStore((s) => s.updateSettings);
-  const { status, styles, retry } = useVoicevoxStyles(true);
+  const [counts, setCounts] = useState<Awaited<ReturnType<typeof countVoicePack>> | null>(null);
+  const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const selected: Record<CharacterGender, number> = { female: femaleStyle, male: maleStyle };
-  const labelOf = (id: number) => {
-    const style = styles.find((s) => s.id === id);
-    return style ? `${style.speakerName}（${style.styleName}）` : `ID ${id}`;
+  const selected: Record<CharacterGender, string> = { female: packFemale, male: packMale };
+  const loadedVoices = counts ? VOICE_PACK_VOICES.filter((voice) => counts.byVoice[voice.id] > 0) : [];
+
+  useEffect(() => {
+    let cancelled = false;
+    void countVoicePack().then((c) => !cancelled && setCounts(c));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onFiles = async (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    setImporting(true);
+    setMessage(null);
+    try {
+      const result = await importVoicePackFiles([...list]);
+      setCounts(await countVoicePack());
+      setMessage({
+        tone: result.imported > 0 ? "ok" : "error",
+        text:
+          result.imported > 0
+            ? `${result.imported} 個の音声を読み込みました${result.skipped.length > 0 ? `（名前が合わない ${result.skipped.length} 個は飛ばしました）` : ""}`
+            : "読み込める音声がありませんでした。ファイル名が cute1_xxxxxxxx.wav のように「声の ID_セリフの ID」になっているか確認してください。",
+      });
+    } catch (err) {
+      setMessage({ tone: "error", text: `読み込めませんでした: ${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      setImporting(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
   };
-  const sources = usedGenders(voiceMode).map((gender) =>
-    voicevoxSource(selected[gender], gender, labelOf(selected[gender])),
-  );
-
-  if (status !== "ok") {
-    return (
-      <div className="flex flex-col gap-2 rounded-lg bg-zinc-800/60 p-3 text-sm">
-        {status === "checking" ? (
-          <p className="flex items-center gap-2 text-zinc-300">
-            <Loader2 className="size-4 animate-spin" /> VOICEVOX を探しています…
-          </p>
-        ) : (
-          <>
-            <p className="text-amber-200">
-              VOICEVOX が見つかりません。PC で VOICEVOX を起動してから「もう一度探す」を押してください。
-            </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={retry}
-                className="flex items-center gap-1 rounded-lg bg-fuchsia-600 px-3 py-1.5 font-bold hover:bg-fuchsia-500"
-              >
-                <RefreshCw className="size-4" /> もう一度探す
-              </button>
-              <a
-                href={VOICEVOX_DOWNLOAD_PAGE}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 text-xs text-fuchsia-300 hover:underline"
-              >
-                VOICEVOX をダウンロード（無料） <ExternalLink className="size-3" />
-              </a>
-            </div>
-          </>
-        )}
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col gap-3 rounded-lg bg-zinc-800/60 p-3 text-sm">
-      <p className="flex items-center gap-1.5 text-xs text-emerald-300">
-        <span className="size-2 rounded-full bg-emerald-400" /> VOICEVOX に接続しました（{styles.length} 種類の声）
+      <p className="text-xs text-zinc-300">
+        手元の音声合成（drama3 など）で作った音声ファイルを読み込んで、その声で読み上げます。
+        作るセリフの一覧（lines.json）と作り方は、リポジトリの <code className="font-mono">voice-pack/</code> フォルダにあります。
       </p>
-      {(["female", "male"] as const).map((gender) => (
+      {counts && (
+        <p className="text-xs tabular-nums text-zinc-300">
+          {loadedVoices.length > 0
+            ? `読み込み済み: ${loadedVoices.length} 種類の声（1つの声につき ${counts.total} セリフ）`
+            : "まだ音声を読み込んでいません"}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={importing}
+          className="flex items-center gap-1 rounded-lg bg-fuchsia-600 px-3 py-1.5 font-bold hover:bg-fuchsia-500 disabled:opacity-60"
+        >
+          {importing ? <Loader2 className="size-4 animate-spin" /> : <FolderOpen className="size-4" />} 音声ファイルを読み込む
+        </button>
+        <button
+          type="button"
+          onClick={downloadVoicePackManifest}
+          className="flex items-center gap-1 rounded-lg bg-zinc-700 px-3 py-1.5 font-bold hover:bg-zinc-600"
+        >
+          <Download className="size-4" /> セリフの一覧（lines.json）
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept=".wav,.mp3,.ogg,.flac,.m4a,audio/*"
+          className="hidden"
+          onChange={(e) => void onFiles(e.target.files)}
+        />
+      </div>
+      <p className="text-xs text-zinc-400">作ったフォルダを開いて、中のファイルをすべて選んで（Ctrl + A）読み込んでください。同じファイルを読み込み直すと上書きします。</p>
+      {message && <p className={cn("text-xs", message.tone === "ok" ? "text-emerald-300" : "text-red-400")}>{message.text}</p>}
+      {usedGenders(voiceMode).map((gender) => (
         <div key={gender} className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-300">{gender === "female" ? "かわいい役の声" : "渋い役の声"}</span>
+          <span className="text-zinc-300">{gender === "female" ? "「女性」で使う声" : "「渋い男性」で使う声"}</span>
           <div className="flex flex-wrap gap-2">
             <select
               value={selected[gender]}
               onChange={(e) =>
-                updateSettings(
-                  gender === "female"
-                    ? { voicevoxFemaleStyle: Number(e.target.value) }
-                    : { voicevoxMaleStyle: Number(e.target.value) },
-                )
+                updateSettings(gender === "female" ? { voicePackFemale: e.target.value } : { voicePackMale: e.target.value })
               }
               className="min-w-0 flex-1 rounded-lg bg-zinc-800 px-3 py-2"
             >
-              {!styles.some((s) => s.id === selected[gender]) && (
-                <option value={selected[gender]}>ID {selected[gender]}（見つかりません）</option>
-              )}
-              {styles.map((style) => (
-                <option key={style.id} value={style.id}>
-                  {style.speakerName}（{style.styleName}）
-                </option>
+              {VOICE_PACK_ROLES.map((role) => (
+                <optgroup key={role} label={VOICE_PACK_ROLE_INFO[role].label}>
+                  {VOICE_PACK_VOICES.filter((voice) => voice.role === role).map((voice) => (
+                    <option key={voice.id} value={voice.id}>
+                      {voice.label}
+                      {counts ? `（${counts.byVoice[voice.id]} / ${counts.total}）` : ""}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
-            <TestButton
-              source={voicevoxSource(selected[gender], gender, labelOf(selected[gender]))}
-              sample={VOICE_SAMPLES[gender]}
-            />
+            <TestButton source={voicePackSource(selected[gender])} sample={VOICE_SAMPLES[gender]} />
           </div>
         </div>
       ))}
-      <p className="text-xs text-zinc-500">
-        クレジット: {voicevoxCredit(styles, usedGenders(voiceMode).map((g) => selected[g])) || "VOICEVOX"}
-        （配信や動画に音声が入る場合は、この表記を載せてください）
-      </p>
-      <PreparePanel
-        sources={sources}
-        intervalMs={0}
-        note="VOICEVOX は PC の中で声を作るので、準備しなくてもその場で読み上げます。前もって準備しておくと、描いている最中の読み上げがより速くなります。"
-      />
     </div>
   );
 }
@@ -611,7 +621,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
-        className="flex w-full max-w-xl flex-col gap-4 rounded-2xl border border-white/10 bg-zinc-900 p-5 text-zinc-100 shadow-2xl"
+        className="flex w-full max-w-xl flex-col gap-4 koma p-5 text-zinc-100"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -623,7 +633,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <Section title="🎵 BGM">
+        <Section title="BGM">
           <Switch
             label="BGM を鳴らす（連続で押したとき・描き続けている間）"
             checked={isBgmOn}
@@ -643,7 +653,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
           <CustomTrackList />
         </Section>
 
-        <Section title="🗣️ 読み上げ（カットインの文字を声で読む）">
+        <Section title="読み上げ（カットインの文字を声で読む）">
           <div className="grid grid-cols-4 gap-1 rounded-lg bg-zinc-800 p-1 text-sm">
             {(Object.keys(VOICE_MODE_LABEL) as VoiceMode[]).map((mode) => (
               <button
@@ -652,7 +662,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 onClick={() => updateSettings({ voiceMode: mode })}
                 className={cn(
                   "rounded-md py-1.5 font-bold transition",
-                  voiceMode === mode ? "bg-fuchsia-600 text-white" : "text-zinc-400 hover:text-white",
+                  voiceMode === mode ? "bg-fuchsia-600 text-white" : "text-zinc-400 hover:text-zinc-50",
                 )}
               >
                 {VOICE_MODE_LABEL[mode]}
@@ -665,7 +675,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 [
                   ["browser", "ブラウザ標準"],
                   ["gemini", "Gemini"],
-                  ["voicevox", "VOICEVOX"],
+                  ["pack", "自作の音声"],
                 ] as const
               )
                 .filter(([engine]) => engine !== "gemini" || GEMINI_ENABLED)
@@ -676,7 +686,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                   onClick={() => updateSettings({ ttsEngine: engine })}
                   className={cn(
                     "rounded-md py-1.5 font-bold transition",
-                    ttsEngine === engine ? "bg-zinc-950 text-white" : "text-zinc-400 hover:text-white",
+                    ttsEngine === engine ? "bg-zinc-100 text-zinc-950" : "text-zinc-400 hover:text-zinc-50",
                   )}
                 >
                   {label}
@@ -685,14 +695,14 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             </div>
           )}
           {voiceMode !== "off" && GEMINI_ENABLED && ttsEngine === "gemini" && <GeminiVoiceSettings />}
-          {voiceMode !== "off" && ttsEngine === "voicevox" && <VoicevoxSettings />}
+          {voiceMode !== "off" && ttsEngine === "pack" && <VoicePackSettings />}
           {voiceMode !== "off" && ttsEngine !== "browser" && (
             <p className="text-xs font-bold text-zinc-400">ブラウザ標準の声（準備できていないセリフ・つながらないときに使います）</p>
           )}
           {voices.length === 0 ? (
             <p className="rounded-lg bg-amber-500/10 p-3 text-xs text-amber-200">
               {IS_DESKTOP
-                ? "日本語の声が見つかりません。Windows の「設定 → 時刻と言語 → 音声」で日本語の音声を追加するか、VOICEVOX を使ってください。"
+                ? "日本語の声が見つかりません。Windows の「設定 → 時刻と言語 → 音声」で日本語の音声を追加するか、「自作の音声」を使ってください。"
                 : "このブラウザで使える日本語の声が見つかりません。Windows の Edge か Chrome で開いてください。"}
             </p>
           ) : (
@@ -706,7 +716,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
           )}
         </Section>
 
-        <Section title="⚡ ZONE（勢い MAX）">
+        <Section title="ZONE（勢い MAX）">
           <label className="flex items-center justify-between gap-3 text-sm">
             1日に ZONE に入れる回数
             <input
@@ -719,7 +729,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             />
           </label>
           <Switch
-            label="🔥 修羅場モード（ZONE の回数制限なし）"
+            label="修羅場モード（ZONE の回数制限なし）"
             checked={shurabaMode}
             onChange={(on) => updateSettings({ shurabaMode: on })}
           />
@@ -728,7 +738,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
           </p>
         </Section>
 
-        <Section title="🔔 効果音">
+        <Section title="効果音">
           <Switch
             label="線を引いた・やり直したときの効果音"
             checked={isStrokeSoundOn}

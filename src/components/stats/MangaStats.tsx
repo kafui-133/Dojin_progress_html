@@ -24,6 +24,7 @@ import {
 } from "@/lib/statsData";
 import { EMPTY_DAY, daysBetween, formatDuration, getEffectiveStreak, toDateString, useAppStore } from "@/store/useAppStore";
 import type { Project } from "@/types";
+import Icon from "@/components/Icon";
 
 
 /** マンガのプロジェクトの進捗グラフ（ページ × 工程・締め切りまでのペース） */
@@ -73,7 +74,7 @@ export default function MangaStats({ project, period, today }: { project: Projec
         <StatTile
           label="今日"
           value={`${todayStageCount} 工程`}
-          sub={`ペン ${formatDuration(todayStats.strokeMs)}・🔥${getEffectiveStreak(progress, today)}日連続`}
+          sub={`ペン ${formatDuration(todayStats.strokeMs)}・${getEffectiveStreak(progress, today)}日連続`}
         />
       </div>
 
@@ -141,7 +142,7 @@ export default function MangaStats({ project, period, today }: { project: Projec
                   <div className="flex items-center justify-between text-xs">
                     <span className="flex items-center gap-1.5 font-bold text-zinc-200">
                       <span className="size-2.5 rounded-sm" style={{ backgroundColor: stage.color }} aria-hidden />
-                      {stage.emoji} {stage.label}
+                      <Icon name={stage.icon} /> {stage.label}
                     </span>
                     <span className="tabular-nums text-zinc-300">
                       {count} / {manuscript.pages.length}（{Math.floor(pct)}%）
@@ -230,7 +231,7 @@ export default function MangaStats({ project, period, today }: { project: Projec
         </div>
       </Card>
 
-      <details className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+      <details className="koma p-4">
         <summary className="cursor-pointer text-sm font-black">表で見る（日ごとの記録）</summary>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[640px] text-right text-xs tabular-nums">
@@ -248,7 +249,7 @@ export default function MangaStats({ project, period, today }: { project: Projec
                 const row = byDay.find((r) => r.date === date)!;
                 const stats = dailyStats[date] ?? EMPTY_DAY;
                 return (
-                  <tr key={date} className="border-t border-white/5 text-zinc-200">
+                  <tr key={date} className="border-t border-zinc-700 text-zinc-200">
                     <td className="py-1 text-left">{shortDate(date)}</td>
                     <td>{STAGES.reduce((sum, s) => sum + row[s.id], 0)}</td>
                     {ACTIVITY_METRICS.map((m) => (

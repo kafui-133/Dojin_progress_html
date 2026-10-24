@@ -12,6 +12,7 @@ import {
   useAppStore,
 } from "@/store/useAppStore";
 import type { PomodoroMode as Mode } from "@/types";
+import Icon from "@/components/Icon";
 
 const MODE_NAME: Record<Mode, string> = {
   focus: "作業",
@@ -50,7 +51,7 @@ function DurationEditor({ onClose }: { onClose: () => void }) {
             onClick={() => apply(f, b)}
             className={cn(
               "rounded-full px-3 py-1 text-xs font-bold transition",
-              f === focusMin && b === breakMin ? "bg-zinc-100 text-zinc-900" : "bg-zinc-700 text-zinc-300 hover:text-white",
+              f === focusMin && b === breakMin ? "bg-zinc-100 text-zinc-900" : "bg-zinc-700 text-zinc-300 hover:text-zinc-50",
             )}
           >
             {f}分 / {b}分
@@ -129,22 +130,22 @@ export default function Timer() {
 
   const ratio = Math.min(1, remaining / pomodoro.totalMs);
   const modeLabel = (m: Mode) => `${MODE_NAME[m]} ${m === "focus" ? focusMin : breakMin}分`;
-  const color = mode === "focus" ? "#e879f9" : "#34d399";
+  const color = mode === "focus" ? "#e0401f" : "#3f8a55";
 
   return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+    <section className="flex flex-col gap-3 koma p-4">
       <div className="flex items-center">
         <h2 className="flex items-center gap-1.5 text-sm font-bold">
           <TimerIcon className="size-4" /> ポモドーロ
         </h2>
-        <span className="ml-auto text-xs text-zinc-400">今日 🍅 × {completedCount}</span>
+        <span className="ml-auto text-xs text-zinc-400">今日 <Icon name="tomato" /> × {completedCount}</span>
         <button
           type="button"
           onClick={() => setEditing((v) => !v)}
           aria-expanded={editing}
           aria-label="作業・休憩の時間を変更"
           title="作業・休憩の時間を変更"
-          className={cn("ml-2 rounded p-1 transition hover:text-white", editing ? "text-white" : "text-zinc-400")}
+          className={cn("ml-2 rounded p-1 transition hover:text-zinc-50", editing ? "text-zinc-50" : "text-zinc-400")}
         >
           <Settings2 className="size-4" />
         </button>
@@ -160,7 +161,7 @@ export default function Timer() {
             onClick={() => switchMode(m)}
             className={cn(
               "flex flex-1 items-center justify-center gap-1 rounded-md py-1 font-bold transition",
-              mode === m ? "bg-zinc-950 text-white" : "text-zinc-400 hover:text-white",
+              mode === m ? "bg-zinc-100 text-zinc-950" : "text-zinc-400 hover:text-zinc-50",
             )}
           >
             {m === "break" && <Coffee className="size-3.5" />}
@@ -172,7 +173,7 @@ export default function Timer() {
       <div className="flex items-center gap-4">
         <div className="relative size-32 shrink-0">
           <svg viewBox="0 0 120 120" className="size-full -rotate-90">
-            <circle cx="60" cy="60" r={RING_RADIUS} fill="none" stroke="#27272a" strokeWidth="8" />
+            <circle cx="60" cy="60" r={RING_RADIUS} fill="none" stroke="#e8e1d1" strokeWidth="8" />
             <circle
               cx="60"
               cy="60"

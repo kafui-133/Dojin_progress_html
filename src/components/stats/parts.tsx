@@ -36,7 +36,7 @@ export const PERIODS: { id: Period; label: string }[] = [
 
 export function Card({ title, subtitle, children, className }: { title: string; subtitle?: string; children: React.ReactNode; className?: string }) {
   return (
-    <section className={cn("flex flex-col gap-3 rounded-2xl border border-white/10 bg-zinc-900/60 p-4", className)}>
+    <section className={cn("flex flex-col gap-3 koma p-4", className)}>
       <div>
         <h2 className="text-sm font-black text-zinc-100">{title}</h2>
         {subtitle && <p className="text-xs text-zinc-400">{subtitle}</p>}
@@ -48,7 +48,7 @@ export function Card({ title, subtitle, children, className }: { title: string; 
 
 export function StatTile({ label, value, sub, status }: { label: string; value: string; sub?: string; status?: "good" | "critical" }) {
   return (
-    <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+    <div className="flex flex-col gap-1 koma p-4">
       <span className="text-xs font-bold text-zinc-400">{label}</span>
       <span className="text-3xl font-black tabular-nums text-zinc-50">{value}</span>
       {sub && (
@@ -87,7 +87,7 @@ export function ChartTooltip({
   const rows = payload.filter((item) => item.value !== undefined && item.value !== null);
   if (rows.length === 0) return null;
   return (
-    <div className="rounded-lg border border-white/10 bg-zinc-950/95 px-3 py-2 text-xs shadow-xl">
+    <div className="koma px-3 py-2 text-xs shadow-xl">
       <p className="mb-1 text-zinc-400">{String(label)}</p>
       {rows.map((item) => (
         <p key={String(item.name)} className="flex items-center gap-2">
@@ -152,7 +152,7 @@ export function ActivityChart({
             onClick={() => setMetricId(m.id)}
             className={cn(
               "rounded-full px-3 py-1 text-xs font-bold transition",
-              metric.id === m.id ? "bg-zinc-100 text-zinc-900" : "bg-zinc-800 text-zinc-400 hover:text-white",
+              metric.id === m.id ? "bg-zinc-100 text-zinc-900" : "bg-zinc-800 text-zinc-400 hover:text-zinc-50",
             )}
           >
             {m.label}
@@ -228,7 +228,7 @@ export function CalendarHeatmap({
                       role="img"
                       aria-label={`${shortDate(date)} ${metric.label} ${value.toLocaleString()}${metric.unit}`}
                       title={future ? "" : `${shortDate(date)}  ${metric.label} ${value.toLocaleString()} ${metric.unit}`}
-                      className={cn("size-3 rounded-[3px]", date === today && "ring-1 ring-white/70")}
+                      className={cn("size-3 rounded-[3px]", date === today && "ring-1 ring-zinc-100")}
                       style={{ backgroundColor: future ? "transparent" : colorOf(value) }}
                     />
                   );

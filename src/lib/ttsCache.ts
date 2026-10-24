@@ -1,7 +1,7 @@
 import { STORES, withStore } from "@/lib/db";
 
 /**
- * 外部の音声合成（Gemini・VOICEVOX）で作ったセリフの音声を、ブラウザ（IndexedDB）に保存する。
+ * 外部の音声合成（Gemini）で作った・読み込んだセリフの音声を、ブラウザ（IndexedDB）に保存する。
  * 2回目からは保存したものを鳴らすので、待ち時間も API の利用回数もかからない。
  */
 
@@ -15,13 +15,11 @@ export class TtsError extends Error {
   }
 }
 
-/** 音声の作り手（Gemini のキャラクター、VOICEVOX の話者など） */
+/** 音声の作り手（Gemini のキャラクター、自作の音声の声など） */
 export interface VoiceSource {
   /** 保存のキーに使う。声や話し方が変わったら別のキーになるようにする */
   id: string;
   label: string;
-  /** PC 内で動いていてすぐ作れるか（VOICEVOX）。遠くの API なら false（Gemini） */
-  local: boolean;
   synthesize: (text: string) => Promise<Blob>;
 }
 
@@ -35,6 +33,11 @@ export async function getCachedVoice(source: VoiceSource, text: string): Promise
   } catch {
     return null;
   }
+}
+
+/** 用意された音声ファイルを保存する（自作の音声の読み込み） */
+export async function putCachedVoice(source: VoiceSource, text: string, blob: Blob): Promise<void> {
+  await withStore(STORES.voiceCache, "readwrite", (s) => s.put(blob, cacheKey(source, text)));
 }
 
 export async function countCachedVoices(source: VoiceSource, texts: string[]): Promise<number> {

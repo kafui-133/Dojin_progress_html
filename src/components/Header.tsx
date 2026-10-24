@@ -5,11 +5,12 @@ import { BarChart3, LayoutDashboard, Maximize, Minimize, Music, Settings, Volume
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import ProjectDialog, { PROJECT_TYPE_LABEL } from "@/components/ProjectDialog";
+import ProjectDialog, { PROJECT_TYPE_ICON } from "@/components/ProjectDialog";
 import SettingsDialog from "@/components/SettingsDialog";
 import { useNow } from "@/lib/clock";
 import { cn } from "@/lib/utils";
 import { getEffectiveStreak, toDateString, useActiveProject, useAppStore } from "@/store/useAppStore";
+import Icon from "@/components/Icon";
 
 export default function Header() {
   const now = useNow(60_000);
@@ -41,11 +42,11 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/10 bg-zinc-950/85 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b-[3px] border-zinc-100 bg-zinc-950/95 backdrop-blur">
       <div className="mx-auto flex max-w-[1600px] items-center gap-1.5 px-4 py-3 sm:gap-3">
-        <h1 className="shrink-0 text-sm font-black tracking-tight sm:text-xl">
+        <h1 className="shrink-0 text-base font-black sm:text-2xl">
           進捗ブースター
-          <span className="ml-2 hidden text-xs font-bold text-fuchsia-400 xl:inline">Syuraba Booster</span>
+          <span className="ml-2 hidden align-middle font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fuchsia-500 xl:inline">Syuraba Booster</span>
         </h1>
 
         <button
@@ -54,7 +55,7 @@ export default function Header() {
           title="プロジェクトの切り替え・新規作成・JSON の保存と読み込み"
           className="mr-auto flex min-w-0 items-center gap-1.5 rounded-full bg-zinc-800 px-3 py-1 text-sm font-bold text-zinc-200 hover:bg-zinc-700"
         >
-          <span className="shrink-0">{PROJECT_TYPE_LABEL[project.type].split(" ")[0]}</span>
+          <Icon name={PROJECT_TYPE_ICON[project.type]} />
           <span className="truncate">{project.name}</span>
         </button>
 
@@ -72,7 +73,7 @@ export default function Header() {
             streak > 0 ? "bg-orange-600 text-white" : "bg-zinc-800 text-zinc-400",
           )}
         >
-          🔥 {streak}日<span className="hidden sm:inline">連続</span>
+          <Icon name="flame" /> {streak}日<span className="hidden sm:inline">連続</span>
         </span>
 
         {combo.isFever && (
@@ -86,7 +87,7 @@ export default function Header() {
         )}
 
         <span className="whitespace-nowrap text-sm font-bold tabular-nums sm:text-base">
-          🪙 {progress.coins.toLocaleString()}
+          <Icon name="coin" /> {progress.coins.toLocaleString()}
         </span>
 
         <button
@@ -98,10 +99,11 @@ export default function Header() {
           onClick={() => updateSettings({ shurabaMode: !shurabaMode })}
           className={cn(
             "flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-sm font-bold transition sm:px-3",
-            shurabaMode ? "bg-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.6)]" : "bg-zinc-800 text-zinc-400",
+            shurabaMode ? "bg-red-600 text-white" : "bg-zinc-800 text-zinc-400",
           )}
         >
-          🔥<span className="hidden lg:inline">修羅場</span>
+          <Icon name="shout" />
+          <span className="hidden lg:inline">修羅場</span>
         </button>
 
         <button
@@ -125,7 +127,7 @@ export default function Header() {
           onClick={toggleFullscreen}
           aria-label={isFullscreen ? "全画面を終了" : "全画面表示"}
           title={isFullscreen ? "全画面を終了" : "全画面表示（別モニター用）"}
-          className="hidden shrink-0 rounded-full bg-zinc-800 p-1.5 text-zinc-300 transition hover:bg-zinc-700 hover:text-white sm:block"
+          className="hidden shrink-0 rounded-full bg-zinc-800 p-1.5 text-zinc-300 transition hover:bg-zinc-700 hover:text-zinc-50 sm:block"
         >
           {isFullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
         </button>
@@ -135,7 +137,7 @@ export default function Header() {
           onClick={() => setIsSettingsOpen(true)}
           aria-label="設定"
           title="設定（BGM・読み上げ・効果音）"
-          className="shrink-0 rounded-full bg-zinc-800 p-1.5 text-zinc-300 transition hover:bg-zinc-700 hover:text-white"
+          className="shrink-0 rounded-full bg-zinc-800 p-1.5 text-zinc-300 transition hover:bg-zinc-700 hover:text-zinc-50"
         >
           <Settings className="size-4" />
         </button>

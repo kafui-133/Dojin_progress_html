@@ -57,7 +57,7 @@ export interface CspUsageTick {
 
 /** クリスタの使用時間（1日分。プロジェクトに関係なく PC 全体で1つ） */
 export interface CspUsageDay {
-  /** 起動していた時間 = active + idle + background */
+  /** 起動していた時間 = active + idle + background（ポモドーロの休憩中は含めない） */
   runMs: number;
   /** アクティブ: 前面で操作していた時間 */
   activeMs: number;
@@ -65,6 +65,8 @@ export interface CspUsageDay {
   idleMs: number;
   /** ノンアクティブのうち、ほかのアプリを使っていた時間 */
   backgroundMs: number;
+  /** ポモドーロの休憩中にクリスタが起動していた時間（アクティブ・ノンアクティブには数えない） */
+  restMs: number;
   /** その日に初めて起動を確認した時刻・最後に確認した時刻（ms） */
   firstAt: number;
   lastAt: number;
@@ -160,8 +162,8 @@ export interface AppSettings {
   ttsEngine: TtsEngine;     // 読み上げに使う声
   geminiFemaleCharacter: string;   // Gemini の女性キャラクター
   geminiMaleCharacter: string;     // Gemini の男性キャラクター
-  voicevoxFemaleStyle: number;     // VOICEVOX の女性側の話者 ID
-  voicevoxMaleStyle: number;       // VOICEVOX の男性側の話者 ID
+  voicePackFemale: string;         // 自作の音声で「女性」側に使う声の ID（cute1 など）
+  voicePackMale: string;           // 自作の音声で「男性」側に使う声の ID（shibui1 など）
   restBgmId: string;               // 休憩中に流すゆったりした BGM
   zoneDailyLimit: number;          // 1日に ZONE に入れる回数（修羅場モードでは無制限）
   shurabaMode: boolean;            // 修羅場モード（ZONE の上限なし）
@@ -199,5 +201,5 @@ export interface PomodoroState {
   totalMs: number;
 }
 
-/** 読み上げの声: ブラウザ標準 / Gemini の自然な声 / VOICEVOX */
-export type TtsEngine = "browser" | "gemini" | "voicevox";
+/** 読み上げの声: ブラウザ標準 / Gemini の自然な声 / 自分で作った音声ファイル */
+export type TtsEngine = "browser" | "gemini" | "pack";

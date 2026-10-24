@@ -111,7 +111,7 @@ export default function IntegratedStats({ projects, period, today }: { projects:
                   onClick={() => setMetricId(m.id)}
                   className={cn(
                     "rounded-full px-3 py-1 text-xs font-bold transition",
-                    metric.id === m.id ? "bg-zinc-100 text-zinc-900" : "bg-zinc-800 text-zinc-400 hover:text-white",
+                    metric.id === m.id ? "bg-zinc-100 text-zinc-900" : "bg-zinc-800 text-zinc-400 hover:text-zinc-50",
                   )}
                 >
                   {m.label}
@@ -162,7 +162,7 @@ export default function IntegratedStats({ projects, period, today }: { projects:
                   .map((p) => ({ project: p, sum: sumDaily(p.dailyStats), days: activeDayCount(p.dailyStats) }))
                   .sort((a, b) => b.sum.strokeMs - a.sum.strokeMs)
                   .map(({ project, sum, days }) => (
-                    <tr key={project.id} className="border-t border-white/5 text-zinc-200">
+                    <tr key={project.id} className="border-t border-zinc-700 text-zinc-200">
                       <td className="max-w-[12rem] py-1.5 text-left">
                         <span className="flex items-center gap-1.5">
                           <span

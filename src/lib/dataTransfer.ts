@@ -129,6 +129,7 @@ function sanitizeCspUsage(raw: unknown): Record<string, CspUsageDay> {
             activeMs: toNumber(day.activeMs),
             idleMs: toNumber(day.idleMs),
             backgroundMs: toNumber(day.backgroundMs),
+            restMs: toNumber(day.restMs),
             firstAt: toNumber(day.firstAt),
             lastAt: toNumber(day.lastAt),
             hourlyActiveMs: Array.from({ length: 24 }, (_, h) => toNumber(hourly[h])),
@@ -168,6 +169,8 @@ export function parseImport(text: string): ExportFile {
           settings[key],
         ]),
       ) as Partial<AppSettings>;
+      // VOICEVOX の読み上げはなくなったので、以前の保存データはブラウザ標準の声にする
+      if ((file.settings.ttsEngine as string | undefined) === "voicevox") file.settings.ttsEngine = "browser";
     }
     if (typeof data.activeProjectId === "string") file.activeProjectId = data.activeProjectId;
     if (data.cspUsage !== undefined) file.cspUsage = sanitizeCspUsage(data.cspUsage);
@@ -177,7 +180,7 @@ export function parseImport(text: string): ExportFile {
 
 /** 読み込んだ内容の説明（確認ダイアログ用） */
 export function describeImport(file: ExportFile, state: AppState = useAppStore.getState()): string {
-  const names = file.projects.map((p) => `・${p.type === "manga" ? "📖" : "🎨"} ${p.name}`).join("\n");
+  const names = file.projects.map((p) => `・${p.type === "manga" ? "マンガ" : "イラスト"}「${p.name}」`).join("\n");
   if (file.kind === "all") {
     return `統合データを読み込みます。いまの記録（${state.projects.length} プロジェクト・EXP など）はすべて置き換わります。\n\n${names}`;
   }

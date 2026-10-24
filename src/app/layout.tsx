@@ -1,11 +1,20 @@
 import type { Metadata } from "next";
-import { DotGothic16, Geist, Geist_Mono } from "next/font/google";
+import { Dela_Gothic_One, DotGothic16, Geist_Mono, Zen_Kaku_Gothic_New } from "next/font/google";
 import GlobalRuntime from "@/components/GlobalRuntime";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+// 本文: 写植っぽさのある読みやすいゴシック
+const zenKaku = Zen_Kaku_Gothic_New({
+  variable: "--font-zen-kaku",
+  weight: ["400", "500", "700"],
+  preload: false,
+});
+
+// 見出し・大きな数字: マンガの描き文字のような太いゴシック
+const delaGothic = Dela_Gothic_One({
+  variable: "--font-dela-gothic",
+  weight: "400",
+  preload: false,
 });
 
 const geistMono = Geist_Mono({
@@ -29,7 +38,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="ja"
-      className={`${geistSans.variable} ${geistMono.variable} ${dotGothic.variable} h-full antialiased`}
+      className={`${zenKaku.variable} ${delaGothic.variable} ${geistMono.variable} ${dotGothic.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         {children}
