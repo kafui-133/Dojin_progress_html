@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect } from "react";
-import { ACTIONS, ACTION_GROUPS, type ButtonActionType } from "@/lib/actions";
+import { ACTIONS, ACTION_GROUPS } from "@/lib/actions";
 import ManuscriptBoard from "@/components/ManuscriptBoard";
 import { useNow } from "@/lib/clock";
 import { soundManager } from "@/lib/soundManager";
@@ -15,14 +15,7 @@ import {
   useActiveProject,
   useAppStore,
 } from "@/store/useAppStore";
-
-const BUTTON_COLORS: Record<ButtonActionType, string> = {
-  paneling: "from-violet-600 to-indigo-600",
-  panel: "from-red-600 to-orange-500",
-  balloon: "from-sky-500 to-cyan-500",
-  dialogue: "from-pink-600 to-rose-500",
-  text: "from-blue-600 to-indigo-500",
-};
+import Icon from "@/components/Icon";
 
 function formatRemaining(ms: number): string {
   const totalSec = Math.ceil(ms / 1000);
@@ -55,7 +48,7 @@ function ComboGauge({ now }: { now: number }) {
             animate={{ scale: 1, opacity: 1 }}
             className={cn(
               "text-2xl font-black tabular-nums",
-              combo.isFever ? "text-yellow-300" : "text-white",
+              combo.isFever ? "text-fuchsia-500" : "text-zinc-50",
             )}
           >
             {combo.comboCount} <span className="text-base">COMBO</span>
@@ -91,20 +84,20 @@ export default function ActionPanel() {
   const nextMultiplier = getNextMultiplier(combo, now);
 
   return (
-    <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+    <section className="flex flex-col gap-4 koma p-4">
       <ComboGauge now={now} />
 
       {isManga ? (
         <ManuscriptBoard />
       ) : (
         <p className="rounded-lg bg-zinc-800/60 p-3 text-xs text-zinc-400">
-          🎨 イラストモードでは、クリスタでの線・ペン時間・やり直し（Ctrl+Z）を記録します。保存（Ctrl+S）でコンボが進みます。グラフは「進捗グラフ」で見られます。
+          イラストモードでは、クリスタでの線・ペン時間・やり直し（Ctrl+Z）を記録します。保存（Ctrl+S）でコンボが進みます。グラフは「進捗グラフ」で見られます。
         </p>
       )}
 
       {/* ページに紐づかない記録（以前からのボタン）。EXP とコンボだけ増える */}
       {isManga && (
-        <details className="group rounded-lg border border-white/10 p-3">
+        <details className="group rounded-lg border border-zinc-600 p-3">
           <summary className="cursor-pointer text-xs font-bold text-zinc-400">
             ほかの記録（ページに関係なく EXP・コンボだけ）
           </summary>
@@ -126,19 +119,16 @@ export default function ActionPanel() {
                           recordProgress(type);
                         }}
                         className={cn(
-                          "flex flex-col items-center justify-center rounded-xl bg-gradient-to-br px-2 py-3 font-black shadow-lg ring-1 ring-white/10 transition hover:brightness-110",
-                          BUTTON_COLORS[type],
-                          combo.isFever && "ring-2 ring-yellow-300 shadow-[0_0_18px_rgba(250,204,21,0.5)]",
+                          "flex flex-col items-center justify-center rounded-lg border-2 border-zinc-100 bg-zinc-900 px-2 py-3 font-black text-zinc-50 transition hover:bg-zinc-800 active:translate-y-px",
+                          combo.isFever && "tone-shu border-fuchsia-500",
                         )}
                       >
-                        <span className="text-2xl leading-none" aria-hidden>
-                          {action.emoji}
-                        </span>
+                        <Icon name={action.icon} className="size-9" />
                         <span className="mt-1 whitespace-nowrap text-sm sm:text-lg">{action.label}</span>
                         <span
                           className={cn(
                             "text-xs font-bold",
-                            nextMultiplier > 1 ? "text-yellow-200" : "text-white/80",
+                            nextMultiplier > 1 ? "text-fuchsia-600" : "text-zinc-400",
                           )}
                         >
                           +{exp.toLocaleString()} EXP{nextMultiplier > 1 && ` (${nextMultiplier.toFixed(1)}x)`}

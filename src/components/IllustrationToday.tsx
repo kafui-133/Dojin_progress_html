@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useNow } from "@/lib/clock";
 import { ACTIVITY_METRICS, addDays, dateRange, recentAverage, shortDate, sumDaily } from "@/lib/statsData";
 import { EMPTY_DAY, daysBetween, formatDuration, formatLength, toDateString, useActiveProject, useAppStore } from "@/store/useAppStore";
+import Icon from "@/components/Icon";
 
 const PEN_TIME = ACTIVITY_METRICS.find((m) => m.id === "strokeMs")!;
 
@@ -36,9 +37,11 @@ export default function IllustrationToday() {
   ];
 
   return (
-    <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+    <section className="flex flex-col gap-4 koma p-4">
       <div>
-        <p className="text-xs font-bold text-fuchsia-400">🎨 イラスト</p>
+        <p className="flex items-center gap-1 text-xs font-bold text-fuchsia-400">
+          <Icon name="palette" /> イラスト
+        </p>
         <h2 className="text-lg font-black">{project.name}</h2>
         <p className="text-sm text-zinc-400">今日の作業（クリスタでの線・ペン時間・やり直しを記録しています）</p>
       </div>
@@ -63,7 +66,7 @@ export default function IllustrationToday() {
                 className="w-full max-w-6 rounded-t bg-[#3987e5]"
                 style={{ height: `${Math.max(d.minutes > 0 ? 4 : 0, (d.minutes / maxMin) * 72)}px` }}
               />
-              <span className={d.date === today ? "text-[10px] font-bold text-white" : "text-[10px] text-zinc-500"}>
+              <span className={d.date === today ? "text-[10px] font-bold text-zinc-50" : "text-[10px] text-zinc-500"}>
                 {shortDate(d.date)}
               </span>
             </div>
@@ -104,7 +107,7 @@ export default function IllustrationToday() {
               setDeadlineDraft(project.deadline);
               setEditing(true);
             }}
-            className="flex items-center gap-1 text-zinc-400 hover:text-white"
+            className="flex items-center gap-1 text-zinc-400 hover:text-zinc-50"
           >
             <Pencil className="size-4" /> 締め切りを設定
           </button>

@@ -53,7 +53,7 @@ function RestBanner() {
 
   const remaining = Math.ceil(getPomodoroRemaining(pomodoro, now) / 1000);
   return (
-    <div className="fixed bottom-4 left-4 z-[55] flex max-w-sm items-center gap-3 rounded-2xl border border-emerald-400/30 bg-zinc-950/95 px-4 py-3 text-sm text-zinc-100 shadow-2xl">
+    <div className="fixed bottom-4 left-4 z-[55] flex max-w-sm items-center gap-3 koma px-4 py-3 text-sm text-zinc-100">
       <Coffee className="size-6 shrink-0 text-emerald-300" aria-hidden />
       <div className="flex flex-col">
         <span className="font-black">

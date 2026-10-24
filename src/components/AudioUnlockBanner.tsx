@@ -21,7 +21,7 @@ export default function AudioUnlockBanner() {
     <button
       type="button"
       onClick={() => void soundManager.unlock().then(() => setUnlockCount((n) => n + 1))}
-      className="fixed inset-x-4 bottom-4 z-[60] mx-auto flex max-w-md animate-pulse items-center justify-center gap-2 rounded-xl bg-fuchsia-600 px-4 py-3 font-bold text-white shadow-2xl"
+      className="fixed inset-x-4 bottom-4 z-[60] mx-auto flex max-w-md animate-pulse items-center justify-center gap-2 rounded-xl bg-fuchsia-600 px-4 py-3 font-bold text-white"
     >
       <Volume2 className="size-5" /> ここをクリックして音を有効にする
     </button>

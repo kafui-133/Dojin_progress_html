@@ -10,6 +10,7 @@ import { PERIODS, type Period } from "@/components/stats/parts";
 import { useNow } from "@/lib/clock";
 import { cn } from "@/lib/utils";
 import { toDateString, useActiveProject, useAppStore } from "@/store/useAppStore";
+import Icon from "@/components/Icon";
 
 type View = "project" | "integrated" | "csp";
 
@@ -27,13 +28,15 @@ export default function StatsDashboard() {
     <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-4">
       {/* 表示の切り替えと期間のフィルターは1行で、すべてのグラフの上に */}
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-lg font-black">📊 進捗グラフ</h1>
+        <h1 className="flex items-center gap-1.5 text-lg font-black">
+          <Icon name="chart" className="size-7" /> 進捗グラフ
+        </h1>
         <div className="mr-auto flex gap-1 rounded-lg bg-zinc-800 p-1 text-sm" role="tablist" aria-label="表示">
           {(
             [
               ["project", `${PROJECT_TYPE_LABEL[project.type]}：${project.name}`],
-              ["integrated", "🖌️ 統合（お絵描き履歴）"],
-              ["csp", "⏱️ クリスタ使用時間"],
+              ["integrated", "統合（お絵描き履歴）"],
+              ["csp", "クリスタ使用時間"],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -44,7 +47,7 @@ export default function StatsDashboard() {
               onClick={() => setView(id)}
               className={cn(
                 "max-w-[16rem] truncate rounded-md px-3 py-1 font-bold transition",
-                view === id ? "bg-zinc-950 text-white" : "text-zinc-400 hover:text-white",
+                view === id ? "bg-zinc-100 text-zinc-950" : "text-zinc-400 hover:text-zinc-50",
               )}
             >
               {label}
@@ -62,7 +65,7 @@ export default function StatsDashboard() {
               onClick={() => setPeriod(p.id)}
               className={cn(
                 "rounded-md px-3 py-1 font-bold transition",
-                period === p.id ? "bg-zinc-950 text-white" : "text-zinc-400 hover:text-white",
+                period === p.id ? "bg-zinc-100 text-zinc-950" : "text-zinc-400 hover:text-zinc-50",
               )}
             >
               {p.label}

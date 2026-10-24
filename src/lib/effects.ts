@@ -1,6 +1,7 @@
 import confetti from "canvas-confetti";
 
-const KONPEITO_COLORS = ["#ff4fa3", "#ffd23f", "#3ee6ff", "#7cff6b", "#ffffff", "#b07cff"];
+// 紙吹雪も画面と同じ「朱・金・墨・紙」の色にする
+const KONPEITO_COLORS = ["#e0401f", "#e9b949", "#1b1813", "#fdfbf6", "#b4ab98"];
 
 function prefersReducedMotion(): boolean {
   return (

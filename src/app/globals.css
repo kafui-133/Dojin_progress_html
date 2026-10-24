@@ -1,27 +1,106 @@
 @import "tailwindcss";
 
+/*
+ * マンガ原稿テイスト。
+ * 作業机（少し黄ばんだ原稿用紙）の上に、墨の枠線で囲んだコマ（パネル）を並べる。
+ * 色は「紙・墨・朱色」に絞る。コンポーネントは zinc / fuchsia などの色名のまま使い、ここで中身を差し替える:
+ *   zinc   … 950 が紙（いちばん明るい）〜 50 が墨（いちばん濃い）。暗い画面用の番号をそのまま明るい画面にする
+ *   fuchsia… 差し色の朱色
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #f3eee2;
+  --paper-white: #fdfbf6;
+  --ink: #1b1813;
+  --shu: #e0401f;
+  --background: var(--paper);
+  --foreground: var(--ink);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-zen-kaku), "Hiragino Sans", "Yu Gothic", sans-serif;
   --font-mono: var(--font-geist-mono);
   --font-dot: var(--font-dot-gothic);
+  --font-display: var(--font-dela-gothic), var(--font-zen-kaku), sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@theme {
+  /* 紙と墨（番号が小さいほど濃い） */
+  --color-zinc-50: #15120e;
+  --color-zinc-100: #1b1813;
+  --color-zinc-200: #2c2821;
+  --color-zinc-300: #3e3930;
+  --color-zinc-400: #5f584c;
+  --color-zinc-500: #857d6e;
+  --color-zinc-600: #b4ab98;
+  --color-zinc-700: #d6cdb9;
+  --color-zinc-800: #e8e1d1;
+  --color-zinc-900: #fdfbf6;
+  --color-zinc-950: #f3eee2;
+
+  /* 朱色（差し色） */
+  --color-fuchsia-50: #fdf1ec;
+  --color-fuchsia-100: #fbded4;
+  --color-fuchsia-200: #f5b9a6;
+  --color-fuchsia-300: #c4361a;
+  --color-fuchsia-400: #d23b1c;
+  --color-fuchsia-500: #e0401f;
+  --color-fuchsia-600: #cf391b;
+  --color-fuchsia-700: #a92d15;
+  --color-fuchsia-800: #862412;
+  --color-fuchsia-900: #651c0f;
+  --color-fuchsia-950: #3b0f07;
+
+  /* 暗い画面用の明るい文字色を、紙の上で読める濃さにする */
+  --color-emerald-300: #1f7a4d;
+  --color-amber-200: #8a5a00;
+  --color-amber-300: #9a6200;
+  --color-red-400: #c0271a;
+  --color-sky-300: #1d5f93;
+  --color-cyan-300: #13707a;
+
+  /* 角はほとんど丸めない（コマ枠） */
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+  font-family: var(--font-sans);
+  /* 原稿用紙の薄い網点 */
+  background-image: radial-gradient(rgb(27 24 19 / 0.07) 0.8px, transparent 1px);
+  background-size: 6px 6px;
+}
+
+@layer components {
+  /* コマ: 紙の上に墨の枠線 */
+  .koma {
+    background-color: var(--paper-white);
+    border: 2px solid var(--ink);
+    border-radius: 2px;
+  }
+
+  /* スクリーントーン（網点）。影や見出しの帯に使う */
+  .tone {
+    background-image: radial-gradient(rgb(27 24 19 / 0.22) 1px, transparent 1.3px);
+    background-size: 5px 5px;
+  }
+
+  .tone-shu {
+    background-image: radial-gradient(rgb(224 64 31 / 0.35) 1px, transparent 1.3px);
+    background-size: 5px 5px;
+  }
+}
+
+@layer utilities {
+  /* 太字の見出し・数字は、写植風の太いゴシックにする */
+  .font-black {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: 0.01em;
+  }
 }

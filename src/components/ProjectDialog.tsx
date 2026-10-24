@@ -16,10 +16,16 @@ import { getBoardStats } from "@/lib/stages";
 import { cn } from "@/lib/utils";
 import { DEFAULT_TARGET_PAGES, EMPTY_DAY, MAX_PAGES, formatDuration, useAppStore } from "@/store/useAppStore";
 import type { Project, ProjectType } from "@/types";
+import Icon, { type IconName } from "@/components/Icon";
 
 export const PROJECT_TYPE_LABEL: Record<ProjectType, string> = {
-  manga: "📖 マンガ",
-  illustration: "🎨 イラスト",
+  manga: "マンガ",
+  illustration: "イラスト",
+};
+
+export const PROJECT_TYPE_ICON: Record<ProjectType, IconName> = {
+  manga: "manuscript",
+  illustration: "palette",
 };
 
 function projectSummary(project: Project): string {
@@ -58,10 +64,10 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
             onClick={() => setType(t)}
             className={cn(
               "rounded-md py-1.5 font-bold transition",
-              type === t ? "bg-fuchsia-600 text-white" : "text-zinc-400 hover:text-white",
+              type === t ? "bg-fuchsia-600 text-white" : "text-zinc-400 hover:text-zinc-50",
             )}
           >
-            {PROJECT_TYPE_LABEL[t]}
+            <Icon name={PROJECT_TYPE_ICON[t]} /> {PROJECT_TYPE_LABEL[t]}
           </button>
         ))}
       </div>
@@ -150,7 +156,7 @@ function DataTransfer() {
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        className="flex items-center justify-center gap-1 rounded-lg bg-zinc-800 px-3 py-2 font-bold ring-1 ring-white/10 hover:bg-zinc-700"
+        className="flex items-center justify-center gap-1 rounded-lg bg-zinc-800 px-3 py-2 font-bold ring-1 ring-zinc-600 hover:bg-zinc-700"
       >
         <Upload className="size-4" /> JSON を読み込む
       </button>
@@ -187,7 +193,7 @@ export default function ProjectDialog({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="project-title"
-        className="flex w-full max-w-xl flex-col gap-4 rounded-2xl border border-white/10 bg-zinc-900 p-5 text-zinc-100 shadow-2xl"
+        className="flex w-full max-w-xl flex-col gap-4 koma p-5 text-zinc-100"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -207,7 +213,7 @@ export default function ProjectDialog({ onClose }: { onClose: () => void }) {
                 key={project.id}
                 className={cn(
                   "flex items-center gap-2 rounded-lg border p-3",
-                  active ? "border-fuchsia-500/60 bg-fuchsia-500/10" : "border-white/10 bg-zinc-800/40",
+                  active ? "border-fuchsia-500/60 bg-fuchsia-500/10" : "border-zinc-600 bg-zinc-800/40",
                 )}
               >
                 <button
@@ -218,7 +224,7 @@ export default function ProjectDialog({ onClose }: { onClose: () => void }) {
                 >
                   <span className="flex w-full items-center gap-2">
                     <span className="shrink-0 rounded bg-zinc-950 px-1.5 py-0.5 text-[11px] font-bold text-zinc-300">
-                      {PROJECT_TYPE_LABEL[project.type]}
+                      <Icon name={PROJECT_TYPE_ICON[project.type]} /> {PROJECT_TYPE_LABEL[project.type]}
                     </span>
                     <span className="truncate font-bold">{project.name}</span>
                     {active && <span className="shrink-0 text-xs font-bold text-fuchsia-300">使用中</span>}
@@ -235,7 +241,7 @@ export default function ProjectDialog({ onClose }: { onClose: () => void }) {
                     const name = prompt("新しい名前", project.name);
                     if (name) renameProject(project.id, name);
                   }}
-                  className="rounded p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+                  className="rounded p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50"
                 >
                   <Pencil className="size-4" />
                 </button>
@@ -269,7 +275,7 @@ export default function ProjectDialog({ onClose }: { onClose: () => void }) {
           </button>
         )}
 
-        <div className="border-t border-white/10 pt-4">
+        <div className="border-t border-zinc-600 pt-4">
           <DataTransfer />
         </div>
       </div>

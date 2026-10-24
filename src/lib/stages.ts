@@ -1,3 +1,4 @@
+import type { IconName } from "@/components/Icon";
 import type { Manuscript, ManuscriptPage, StageId } from "@/types";
 
 /** 1ページあたりの工程（この順番で進める想定） */
@@ -5,7 +6,7 @@ export interface StageDefinition {
   id: StageId;
   label: string;
   short: string;
-  emoji: string;
+  icon: IconName;
   /**
    * 工程を表す色（ボード・グラフ共通）。暗い背景向けに色覚の違いでも見分けられる順で検証済み。
    * 文字の色には使わず、色の付いた印・塗りに使う（塗りの中の文字は暗い色）
@@ -20,7 +21,7 @@ export const STAGES: StageDefinition[] = [
     id: "paneling",
     label: "コマ割り",
     short: "割",
-    emoji: "📐",
+    icon: "ruler",
     color: "#3987e5",
     exp: 10_000,
     cutIns: ["神コマ割り！", "構図が決まった！", "ネーム突破！"],
@@ -29,7 +30,7 @@ export const STAGES: StageDefinition[] = [
     id: "dialogue",
     label: "セリフ入れ",
     short: "セ",
-    emoji: "💬",
+    icon: "balloon",
     color: "#d95926",
     exp: 10_000,
     cutIns: ["名ゼリフ誕生！", "キャラが喋った！", "エモさ限界突破！"],
@@ -38,7 +39,7 @@ export const STAGES: StageDefinition[] = [
     id: "sketch",
     label: "下書き",
     short: "下",
-    emoji: "✏️",
+    icon: "pencil",
     color: "#199e70",
     exp: 10_000,
     cutIns: ["下書き完了！", "アタリが取れた！", "線が見えた！"],
@@ -47,7 +48,7 @@ export const STAGES: StageDefinition[] = [
     id: "inking",
     label: "ペン入れ",
     short: "ペ",
-    emoji: "🖋️",
+    icon: "gpen",
     color: "#c98500",
     exp: 10_000,
     cutIns: ["神作画！", "ペン入れ完了！", "作画崩壊回避！"],
@@ -56,7 +57,7 @@ export const STAGES: StageDefinition[] = [
     id: "finishing",
     label: "仕上げ",
     short: "仕",
-    emoji: "✨",
+    icon: "sparkle",
     color: "#d55181",
     exp: 10_000,
     cutIns: ["仕上げ完了！", "トーン職人！", "完成度MAX！"],

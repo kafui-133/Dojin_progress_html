@@ -65,7 +65,7 @@ export default function IllustrationStats({ project, period, today }: { project:
 
 function DailyTable({ dailyStats, days }: { dailyStats: Project["dailyStats"]; days: string[] }) {
   return (
-    <details className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+    <details className="koma p-4">
       <summary className="cursor-pointer text-sm font-black">表で見る（日ごとの記録）</summary>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[560px] text-right text-xs tabular-nums">
@@ -81,7 +81,7 @@ function DailyTable({ dailyStats, days }: { dailyStats: Project["dailyStats"]; d
           </thead>
           <tbody>
             {[...days].reverse().map((date) => (
-              <tr key={date} className="border-t border-white/5 text-zinc-200">
+              <tr key={date} className="border-t border-zinc-700 text-zinc-200">
                 <td className="py-1 text-left">{shortDate(date)}</td>
                 {ILLUSTRATION_METRICS.map((m) => (
                   <td key={m.id}>{m.toValue(dailyStats[date] ?? EMPTY_DAY).toLocaleString()}</td>

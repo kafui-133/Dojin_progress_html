@@ -18,6 +18,7 @@ import {
   useAppStore,
 } from "@/store/useAppStore";
 import type { ProgressActionResult, StrokeResult, TypingResult, UndoResult } from "@/types";
+import Icon from "@/components/Icon";
 
 /** 演出全体の長さ（PRD 5.4: 1.5秒） */
 const EFFECT_MS = 1500;
@@ -294,7 +295,7 @@ export default function EffectOverlay() {
                     ×{effect.multiplier.toFixed(1)}
                   </span>
                 )}
-                {effect.coins !== undefined && <span className="text-yellow-200">+{effect.coins} 🪙</span>}
+                {effect.coins !== undefined && <span className="text-yellow-200">+{effect.coins} <Icon name="coin" /></span>}
               </motion.div>
             </div>
 

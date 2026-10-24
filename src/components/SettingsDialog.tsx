@@ -40,8 +40,8 @@ const VOICE_SAMPLES: Record<VoiceGender, string> = {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-3 border-t border-white/10 pt-4 first:border-t-0 first:pt-0">
-      <h3 className="text-sm font-black text-fuchsia-300">{title}</h3>
+    <section className="flex flex-col gap-3 border-t border-zinc-600 pt-4 first:border-t-0 first:pt-0">
+      <h3 className="border-l-4 border-fuchsia-500 pl-2 text-sm font-black text-zinc-50">{title}</h3>
       {children}
     </section>
   );
@@ -176,7 +176,7 @@ function CustomTrackList() {
                 type="button"
                 onClick={() => soundManager.preview(track.id)}
                 aria-label={`${track.name} を試聴`}
-                className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+                className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50"
               >
                 <Play className="size-4" />
               </button>
@@ -333,7 +333,7 @@ function PreparePanel({ sources, intervalMs, note }: { sources: VoiceSource[]; i
   const complete = shown !== null && shown.done >= shown.total;
 
   return (
-    <div className="flex flex-col gap-2 border-t border-white/10 pt-3">
+    <div className="flex flex-col gap-2 border-t border-zinc-600 pt-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-zinc-300">
           セリフの声
@@ -621,7 +621,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
-        className="flex w-full max-w-xl flex-col gap-4 rounded-2xl border border-white/10 bg-zinc-900 p-5 text-zinc-100 shadow-2xl"
+        className="flex w-full max-w-xl flex-col gap-4 koma p-5 text-zinc-100"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -633,7 +633,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <Section title="🎵 BGM">
+        <Section title="BGM">
           <Switch
             label="BGM を鳴らす（連続で押したとき・描き続けている間）"
             checked={isBgmOn}
@@ -653,7 +653,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
           <CustomTrackList />
         </Section>
 
-        <Section title="🗣️ 読み上げ（カットインの文字を声で読む）">
+        <Section title="読み上げ（カットインの文字を声で読む）">
           <div className="grid grid-cols-4 gap-1 rounded-lg bg-zinc-800 p-1 text-sm">
             {(Object.keys(VOICE_MODE_LABEL) as VoiceMode[]).map((mode) => (
               <button
@@ -662,7 +662,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                 onClick={() => updateSettings({ voiceMode: mode })}
                 className={cn(
                   "rounded-md py-1.5 font-bold transition",
-                  voiceMode === mode ? "bg-fuchsia-600 text-white" : "text-zinc-400 hover:text-white",
+                  voiceMode === mode ? "bg-fuchsia-600 text-white" : "text-zinc-400 hover:text-zinc-50",
                 )}
               >
                 {VOICE_MODE_LABEL[mode]}
@@ -686,7 +686,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
                   onClick={() => updateSettings({ ttsEngine: engine })}
                   className={cn(
                     "rounded-md py-1.5 font-bold transition",
-                    ttsEngine === engine ? "bg-zinc-950 text-white" : "text-zinc-400 hover:text-white",
+                    ttsEngine === engine ? "bg-zinc-100 text-zinc-950" : "text-zinc-400 hover:text-zinc-50",
                   )}
                 >
                   {label}
@@ -716,7 +716,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
           )}
         </Section>
 
-        <Section title="⚡ ZONE（勢い MAX）">
+        <Section title="ZONE（勢い MAX）">
           <label className="flex items-center justify-between gap-3 text-sm">
             1日に ZONE に入れる回数
             <input
@@ -729,7 +729,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             />
           </label>
           <Switch
-            label="🔥 修羅場モード（ZONE の回数制限なし）"
+            label="修羅場モード（ZONE の回数制限なし）"
             checked={shurabaMode}
             onChange={(on) => updateSettings({ shurabaMode: on })}
           />
@@ -738,7 +738,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
           </p>
         </Section>
 
-        <Section title="🔔 効果音">
+        <Section title="効果音">
           <Switch
             label="線を引いた・やり直したときの効果音"
             checked={isStrokeSoundOn}

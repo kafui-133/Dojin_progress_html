@@ -202,7 +202,7 @@ export default function CspUsageStats({
               {tableDays.map((date) => {
                 const day = dayOf(date);
                 return (
-                  <tr key={date} className="border-t border-white/5 text-zinc-200">
+                  <tr key={date} className="border-t border-zinc-700 text-zinc-200">
                     <td className="py-1.5 text-left">{shortDate(date)}</td>
                     <td className="text-right">{formatDuration(day.runMs)}</td>
                     <td className="text-right">{formatDuration(day.activeMs)}</td>

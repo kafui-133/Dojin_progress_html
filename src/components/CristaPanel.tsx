@@ -22,6 +22,7 @@ import {
   useAppStore,
 } from "@/store/useAppStore";
 import { GROW_MS, type InkBalloon, type InkItem, RETRACT_MS, usePanelStore } from "@/store/usePanelStore";
+import Icon from "@/components/Icon";
 
 // ---- ライブ集中線キャンバス ----
 
@@ -124,7 +125,7 @@ function drawLines(canvas: HTMLCanvasElement, items: InkItem[], now: number): bo
     ctx.closePath();
     ctx.fillStyle = line.color;
     if (highlighted) {
-      ctx.shadowColor = line.removedAt === undefined ? "#e879f9" : "#22d3ee";
+      ctx.shadowColor = line.removedAt === undefined ? "#e0401f" : "#22d3ee";
       ctx.shadowBlur = 12;
     } else {
       ctx.shadowBlur = 0;
@@ -189,7 +190,7 @@ function LiveInk() {
       }
       const typing = state.lastTyping;
       if (typing && typing !== prev.lastTyping) {
-        setPopup({ key: `t${typing.id}`, text: `💬 +${typing.expGained}`, tone: "typing" });
+        setPopup({ key: `t${typing.id}`, text: `+${typing.expGained}`, tone: "typing" });
       }
     });
 
@@ -202,7 +203,7 @@ function LiveInk() {
   }, []);
 
   return (
-    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-md border-4 border-black bg-[#fdfdf8] shadow-[0_0_40px_rgba(217,70,239,0.25)]">
+    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-md border-4 border-black bg-[#fdfdf8]">
       <canvas ref={canvasRef} className="absolute inset-0 size-full" />
 
       <div className="pointer-events-none absolute left-2 top-2 flex flex-col items-start gap-1">
@@ -281,7 +282,9 @@ function CspUsageToday() {
   return (
     <div className="flex flex-col gap-1.5 rounded-xl bg-zinc-800/50 p-3 text-xs">
       <div className="flex items-center gap-2">
-        <span className="font-bold text-zinc-300">⏱️ 今日のクリスタ</span>
+        <span className="flex items-center gap-1 font-bold text-zinc-300">
+          <Icon name="stopwatch" /> 今日のクリスタ
+        </span>
         {cspState && (
           <span
             className={cn(
@@ -290,7 +293,7 @@ function CspUsageToday() {
             )}
           >
             {/* ポモドーロの休憩中は、アクティブ・ノンアクティブに数えない */}
-            {resting && cspState !== "closed" ? "☕ 休憩中（数えない）" : CSP_STATE_LABEL[cspState]}
+            {resting && cspState !== "closed" ? "休憩中（数えない）" : CSP_STATE_LABEL[cspState]}
           </span>
         )}
         {day.firstAt > 0 && (
@@ -352,7 +355,7 @@ function FlowGauge() {
               key={rushAlive ? flow.rush : 0}
               initial={{ scale: 1.5, opacity: 0.4 }}
               animate={{ scale: 1, opacity: 1 }}
-              className={cn("text-3xl font-black tabular-nums", zone ? "text-amber-300" : "text-white")}
+              className={cn("text-3xl font-black tabular-nums", zone ? "text-fuchsia-500" : "text-zinc-50")}
             >
               {rushAlive ? flow.rush : 0}
             </motion.span>
@@ -409,9 +412,9 @@ function FlowGauge() {
       </div>
       <p className="text-right text-xs text-zinc-400">
         {resting
-          ? "☕ 休憩中は ZONE に入りません"
+          ? "休憩中は ZONE に入りません"
           : shurabaMode
-            ? `🔥 修羅場モード（今日の ZONE ${zonesToday}回・上限なし）`
+            ? `修羅場モード（今日の ZONE ${zonesToday}回・上限なし）`
             : zonesToday >= zoneDailyLimit
               ? `今日の ZONE は上限（${zoneDailyLimit}回）に達しました。ゆっくり描こう`
               : `今日の ZONE ${zonesToday} / ${zoneDailyLimit}回`}
@@ -442,9 +445,11 @@ export default function CristaPanel() {
   const { status, mode } = useBridgeStatus();
 
   return (
-    <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+    <section className="flex flex-col gap-4 koma p-4">
       <div className="flex items-center gap-2">
-        <h2 className="mr-auto text-lg font-black">🎨 クリスタ連携</h2>
+        <h2 className="mr-auto flex items-center gap-2 text-lg font-black">
+          <Icon name="palette" className="size-7" /> クリスタ連携
+        </h2>
         <span
           className={cn(
             "flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold",
@@ -503,7 +508,7 @@ export default function CristaPanel() {
       <button
         type="button"
         onClick={() => setStrokeSoundOn(!isStrokeSoundOn)}
-        className="flex items-center gap-1.5 self-start text-sm text-zinc-400 hover:text-white"
+        className="flex items-center gap-1.5 self-start text-sm text-zinc-400 hover:text-zinc-50"
       >
         {isStrokeSoundOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
         線・やり直しの効果音 {isStrokeSoundOn ? "ON" : "OFF"}

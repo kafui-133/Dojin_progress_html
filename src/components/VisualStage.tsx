@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useNow } from "@/lib/clock";
 import { getBoardStats, pagesWithDataBeyond } from "@/lib/stages";
 import { MAX_PAGES, toDateString, useActiveProject, useAppStore } from "@/store/useAppStore";
+import Icon from "@/components/Icon";
 
 const STAGES = [
   { min: 0, label: "白紙の原稿", comment: "まずは1コマから！" },
@@ -219,7 +220,7 @@ export default function VisualStage() {
   const pacePerDay = days !== null && days >= 0 && remainingTasks > 0 ? Math.ceil(remainingTasks / (days + 1)) : null;
 
   return (
-    <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+    <section className="flex flex-col gap-4 koma p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-bold text-fuchsia-400">STAGE {stageIndex + 1} / 5</p>
@@ -236,12 +237,12 @@ export default function VisualStage() {
             animate={{ x: 0, opacity: 1 }}
             className="shrink-0 rounded-full bg-zinc-800 px-3 py-1 text-sm"
           >
-            🧑‍🎨 アシスタント
+            <Icon name="brush" /> アシスタント
           </motion.span>
         )}
       </div>
 
-      <div className="mx-auto aspect-[210/297] w-full max-w-[280px] overflow-hidden rounded shadow-[0_0_40px_rgba(217,70,239,0.25)]">
+      <div className="mx-auto aspect-[210/297] w-full max-w-[280px] overflow-hidden rounded">
         <ManuscriptPage stage={stageIndex} />
       </div>
 
@@ -280,7 +281,7 @@ export default function VisualStage() {
         <button
           type="button"
           onClick={() => setIsEditing(true)}
-          className="flex items-center gap-1 self-end text-sm text-zinc-400 hover:text-white"
+          className="flex items-center gap-1 self-end text-sm text-zinc-400 hover:text-zinc-50"
         >
           <Pencil className="size-4" /> ページ数・締め切りを設定
         </button>

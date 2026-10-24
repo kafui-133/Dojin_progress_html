@@ -180,7 +180,7 @@ export function parseImport(text: string): ExportFile {
 
 /** 読み込んだ内容の説明（確認ダイアログ用） */
 export function describeImport(file: ExportFile, state: AppState = useAppStore.getState()): string {
-  const names = file.projects.map((p) => `・${p.type === "manga" ? "📖" : "🎨"} ${p.name}`).join("\n");
+  const names = file.projects.map((p) => `・${p.type === "manga" ? "マンガ" : "イラスト"}「${p.name}」`).join("\n");
   if (file.kind === "all") {
     return `統合データを読み込みます。いまの記録（${state.projects.length} プロジェクト・EXP など）はすべて置き換わります。\n\n${names}`;
   }
