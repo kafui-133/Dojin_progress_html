@@ -43,6 +43,21 @@ export interface VoicePackImportResult {
   skipped: string[];
 }
 
+const AUDIO_TYPES: Record<string, string> = {
+  wav: "audio/wav",
+  mp3: "audio/mpeg",
+  ogg: "audio/ogg",
+  flac: "audio/flac",
+  m4a: "audio/mp4",
+};
+
+/** 再生のときに形式が分かるよう、種類が空のファイル（ブラウザによってある）には拡張子から付ける */
+function withAudioType(file: File): Blob {
+  if (file.type) return file;
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  return new Blob([file], { type: AUDIO_TYPES[ext] ?? "audio/wav" });
+}
+
 /** 選んだファイルのうち、ファイル名が一覧に合うものを読み込む（同じものは上書き） */
 export async function importVoicePackFiles(files: File[]): Promise<VoicePackImportResult> {
   const byId = new Map(getVoicePackLines().map((line) => [line.id, line]));
@@ -54,7 +69,7 @@ export async function importVoicePackFiles(files: File[]): Promise<VoicePackImpo
       result.skipped.push(file.name);
       continue;
     }
-    await putCachedVoice(voicePackSource(parsed.voiceId), line.reading, file);
+    await putCachedVoice(voicePackSource(parsed.voiceId), line.reading, withAudioType(file));
     result.imported++;
   }
   return result;
