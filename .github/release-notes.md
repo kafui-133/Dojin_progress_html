@@ -6,8 +6,18 @@
 | --- | --- |
 | `SyurabaBooster-x.x.x-setup.exe` | **おすすめ**。インストールして、スタートメニューとデスクトップから起動できます |
 | `SyurabaBooster-x.x.x-portable.exe` | インストールせずに、ダブルクリックだけで使いたい人 |
+| `SyurabaBooster-voices.zip` | 読み上げの声（21 種類）。使いたい人だけ（約 14MB） |
 
 - Windows 10 / 11（64bit）用です。Node.js やコマンドプロンプトは要りません。
 - 初めて開くと「Windows によって PC が保護されました」と出ることがあります。**「詳細情報」→「実行」** で起動できます（個人で作ったアプリで、有料の署名をしていないため表示されます）。
+
+### 読み上げの声を使うとき
+
+1. `SyurabaBooster-voices.zip` をダウンロードして展開する
+2. アプリの ⚙️（設定）→「読み上げ」で **「自作の音声」** を選び、**「音声ファイルを読み込む」** を押す
+3. 展開した `audio` フォルダを開いて、中のファイルをすべて選んで（`Ctrl + A`）「開く」
+4. 「「女性」で使う声」「「渋い男性」で使う声」で好きな声を選ぶ（かわいい役・渋い役・男性・お姉さん・小学生の女の子・小学生の男の子）
+
+Voice: Fish Audio Drama 3 (drama3-small) / **Built with Fish Audio**
 
 使い方は [配布版の説明（DISTRIBUTION.md）](https://github.com/kafui-133/Dojin_progress_html/blob/__SHA__/DISTRIBUTION.md) を見てください。
