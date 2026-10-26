@@ -117,10 +117,20 @@ function stopAll(): void {
   playingHowl = null;
 }
 
+/** 保存した音声の形式（Gemini は WAV、自作の音声は読み込んだファイルの形式。OGG などもある） */
+function blobFormat(blob: Blob): string {
+  const type = blob.type.toLowerCase();
+  if (type.includes("ogg") || type.includes("opus")) return "ogg";
+  if (type.includes("mpeg") || type.includes("mp3")) return "mp3";
+  if (type.includes("flac")) return "flac";
+  if (type.includes("mp4") || type.includes("m4a") || type.includes("aac")) return "m4a";
+  return "wav";
+}
+
 function playVoiceBlob(key: string, blob: Blob, volume: number): void {
   let howl = voiceHowls.get(key);
   if (!howl) {
-    howl = new Howl({ src: [URL.createObjectURL(blob)], format: ["wav"] });
+    howl = new Howl({ src: [URL.createObjectURL(blob)], format: [blobFormat(blob)] });
     voiceHowls.set(key, howl);
   }
   const target = howl;

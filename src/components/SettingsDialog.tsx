@@ -557,7 +557,10 @@ function VoicePackSettings() {
           onChange={(e) => void onFiles(e.target.files)}
         />
       </div>
-      <p className="text-xs text-zinc-400">作ったフォルダを開いて、中のファイルをすべて選んで（Ctrl + A）読み込んでください。同じファイルを読み込み直すと上書きします。</p>
+      <p className="text-xs text-zinc-400">
+        リポジトリの <code className="font-mono">voice-pack/audio</code> フォルダ（作り直したときは <code className="font-mono">voice-pack/output</code>）を開いて、
+        中のファイルをすべて選んで（Ctrl + A）読み込んでください。同じファイルを読み込み直すと上書きします。
+      </p>
       {message && <p className={cn("text-xs", message.tone === "ok" ? "text-emerald-300" : "text-red-400")}>{message.text}</p>}
       {usedGenders(voiceMode).map((gender) => (
         <div key={gender} className="flex flex-col gap-1 text-sm">
@@ -585,6 +588,10 @@ function VoicePackSettings() {
           </div>
         </div>
       ))}
+      <p className="rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-xs text-zinc-300">
+        クレジット: Voice: Fish Audio Drama 3 (drama3-small) / <b className="text-zinc-50">Built with Fish Audio</b>
+        （用意してある声を使うとき。配信や動画に音声が入る場合も、この表記を載せてください）
+      </p>
     </div>
   );
 }
