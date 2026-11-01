@@ -229,14 +229,15 @@ export function voiceOptions(settings: AppSettings): SpeakOptions {
     femaleVoiceUri: settings.femaleVoiceUri,
     maleVoiceUri: settings.maleVoiceUri,
     sources: voiceSources(settings),
+    volume: settings.voiceVolume,
   };
 }
 
 /** 設定画面のテスト用。保存がなければその場で作って、その声で鳴らす（作れなければエラー） */
-export async function previewSource(source: VoiceSource, text: string): Promise<void> {
+export async function previewSource(source: VoiceSource, text: string, volume = 1): Promise<void> {
   const reading = toReading(text);
   const token = ++speakToken;
   stopAll();
   const blob = (await getCachedVoice(source, reading)) ?? (await generateShared(source, reading));
-  if (token === speakToken) playVoiceBlob(`${source.id}|${reading}`, blob, 1);
+  if (token === speakToken) playVoiceBlob(`${source.id}|${reading}`, blob, volume);
 }

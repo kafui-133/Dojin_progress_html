@@ -70,6 +70,39 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   );
 }
 
+/** 音量（0〜1）。指を離したとき・キーで動かしたときに onCommit で試し鳴らしする */
+function VolumeSlider({
+  label,
+  value,
+  onChange,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  onCommit?: () => void;
+}) {
+  const percent = Math.round(value * 100);
+  return (
+    <label className="flex items-center gap-3 text-sm">
+      <span className="w-28 shrink-0 whitespace-nowrap text-zinc-300">{label}</span>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={5}
+        value={percent}
+        onChange={(e) => onChange(Number(e.target.value) / 100)}
+        onPointerUp={onCommit}
+        onKeyUp={onCommit}
+        aria-label={label}
+        className="min-w-0 flex-1 accent-fuchsia-500"
+      />
+      <span className="w-10 shrink-0 text-right tabular-nums text-zinc-300">{percent}%</span>
+    </label>
+  );
+}
+
 function TrackSelect({
   label,
   value,
@@ -233,6 +266,7 @@ function VoicePicker({ gender }: { gender: VoiceGender }) {
               mode: gender,
               femaleVoiceUri: useAppStore.getState().femaleVoiceUri,
               maleVoiceUri: useAppStore.getState().maleVoiceUri,
+              volume: useAppStore.getState().voiceVolume,
             })
           }
           className="flex shrink-0 items-center gap-1 rounded-lg bg-zinc-700 px-3 font-bold hover:bg-zinc-600"
@@ -264,7 +298,7 @@ function TestButton({ source, sample }: { source: VoiceSource; sample: string })
     setError(null);
     setTesting(true);
     try {
-      await previewSource(source, sample);
+      await previewSource(source, sample, useAppStore.getState().voiceVolume);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -608,6 +642,9 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   // 配布版では Gemini を選べない（読み込んだデータが Gemini のままならブラウザ標準として扱う）
   const ttsEngine = savedEngine === "gemini" && !GEMINI_ENABLED ? "browser" : savedEngine;
   const isStrokeSoundOn = useAppStore((s) => s.isStrokeSoundOn);
+  const seVolume = useAppStore((s) => s.seVolume);
+  const voiceVolume = useAppStore((s) => s.voiceVolume);
+  const bgmVolume = useAppStore((s) => s.bgmVolume);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const voices = useJapaneseVoices();
 
@@ -646,6 +683,12 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             checked={isBgmOn}
             onChange={(on) => updateSettings({ isBgmOn: on })}
           />
+          <VolumeSlider
+            label="BGM の音量"
+            value={bgmVolume}
+            onChange={(v) => updateSettings({ bgmVolume: v })}
+            onCommit={() => soundManager.preview(bgmNormalId)}
+          />
           <TrackSelect label="作業中の曲" value={bgmNormalId} onChange={(id) => updateSettings({ bgmNormalId: id })} />
           <TrackSelect
             label="フィーバー・ゾーン中の曲"
@@ -661,6 +704,11 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
         </Section>
 
         <Section title="読み上げ（カットインの文字を声で読む）">
+          <VolumeSlider
+            label="読み上げの音量"
+            value={voiceVolume}
+            onChange={(v) => updateSettings({ voiceVolume: v })}
+          />
           <div className="grid grid-cols-4 gap-1 rounded-lg bg-zinc-800 p-1 text-sm">
             {(Object.keys(VOICE_MODE_LABEL) as VoiceMode[]).map((mode) => (
               <button
@@ -746,6 +794,12 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
         </Section>
 
         <Section title="効果音">
+          <VolumeSlider
+            label="効果音の音量"
+            value={seVolume}
+            onChange={(v) => updateSettings({ seVolume: v })}
+            onCommit={() => soundManager.play("fanfare")}
+          />
           <Switch
             label="線を引いた・やり直したときの効果音"
             checked={isStrokeSoundOn}

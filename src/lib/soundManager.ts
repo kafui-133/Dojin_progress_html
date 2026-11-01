@@ -58,13 +58,17 @@ export const BGM_PRESETS: BgmPreset[] = [
 export const DEFAULT_BGM_NORMAL = "synthwave";
 export const DEFAULT_BGM_FEVER = "hyperpop";
 
-const SE_VOLUME = 0.8;
-const STROKE_VOLUME = 0.45;
+/**
+ * 音量の設定（0〜1）を 1 にしたときの大きさ。設定の初期値 0.5 で、BGM はこれまでと同じ大きさになる。
+ * 線の効果音は数が多いので、ほかの効果音より小さめにする。
+ */
+const SE_MAX_VOLUME = 1;
+const STROKE_RATIO = 0.56;
 /** 線の効果音の音階（メジャーペンタトニック、半音単位） */
 const PENTATONIC = [0, 2, 4, 7, 9];
 /** 2オクターブ上まで上がったら折り返す */
 const STROKE_NOTES = 11;
-const BGM_VOLUME = 0.35;
+const BGM_MAX_VOLUME = 0.7;
 /** 声の読み上げ中は BGM をこの割合まで下げる */
 const DUCK_RATIO = 0.3;
 const BGM_FADE_MS = 800;
@@ -92,6 +96,9 @@ class SoundManager {
   private previewing: string | null = null;
   private previewTimer: ReturnType<typeof setTimeout> | undefined;
   private ducked = false;
+  /** 設定画面の音量（0〜1） */
+  private seLevel = 0.5;
+  private bgmLevel = 0.5;
 
   private load(
     sources: string[],
@@ -118,7 +125,7 @@ class SoundManager {
 
   private getSe(name: SoundEffect): Howl | null {
     if (!this.se.has(name)) {
-      const howl = this.load(SE_SOURCES[name], { volume: SE_VOLUME }, () => this.se.delete(name));
+      const howl = this.load(SE_SOURCES[name], { volume: this.seVolume() }, () => this.se.delete(name));
       if (!howl) return null;
       this.se.set(name, howl);
     }
@@ -131,7 +138,7 @@ class SoundManager {
       if (!source) return null;
       const howl = this.load(
         source.sources,
-        { loop: true, volume: BGM_VOLUME, format: source.format },
+        { loop: true, volume: this.targetVolume(), format: source.format },
         () => {
           this.bgm.delete(id);
           // 再生中の曲が読み込めなかったら次の候補で鳴らし直す
@@ -147,8 +154,13 @@ class SoundManager {
     return this.bgm.get(id)!;
   }
 
+  private seVolume(): number {
+    return SE_MAX_VOLUME * this.seLevel;
+  }
+
   private targetVolume(): number {
-    return this.ducked ? BGM_VOLUME * DUCK_RATIO : BGM_VOLUME;
+    const volume = BGM_MAX_VOLUME * this.bgmLevel;
+    return this.ducked ? volume * DUCK_RATIO : volume;
   }
 
   private fadeOutAndStop(id: string): void {
@@ -178,7 +190,10 @@ class SoundManager {
   }
 
   play(name: SoundEffect): void {
-    this.getSe(name)?.play();
+    const howl = this.getSe(name);
+    if (!howl) return;
+    const id = howl.play();
+    howl.volume(this.seVolume(), id);
   }
 
   /**
@@ -194,7 +209,7 @@ class SoundManager {
     const semitones = 12 * Math.floor(note / PENTATONIC.length) + PENTATONIC[note % PENTATONIC.length];
     const id = howl.play();
     howl.rate(Math.pow(2, semitones / 12), id);
-    howl.volume(STROKE_VOLUME, id);
+    howl.volume(this.seVolume() * STROKE_RATIO, id);
   }
 
   /** ブラウザの自動再生制限で音が止められているか */
@@ -249,9 +264,23 @@ class SoundManager {
     if (howl?.playing()) howl.fade(howl.volume(), this.targetVolume(), 250);
   }
 
+  /** 設定画面の音量（0〜1）。鳴っている BGM もすぐ合わせる */
+  setVolumes({ se, bgm }: { se: number; bgm: number }): void {
+    this.seLevel = clampVolume(se);
+    this.bgmLevel = clampVolume(bgm);
+    for (const id of [this.currentBgm, this.previewing]) {
+      const howl = id ? this.bgm.get(id) : undefined;
+      if (howl?.playing()) howl.fade(howl.volume(), this.targetVolume(), 120);
+    }
+  }
+
   setMuted(muted: boolean): void {
     Howler.mute(muted);
   }
+}
+
+function clampVolume(v: number): number {
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.5;
 }
 
 export const soundManager = new SoundManager();
