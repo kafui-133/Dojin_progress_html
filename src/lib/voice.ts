@@ -127,6 +127,9 @@ function blobFormat(blob: Blob): string {
   return "wav";
 }
 
+/** 読み上げの音量（設定 0〜1）を 1 にしたときの大きさ。効果音と同じく控えめにする */
+const VOICE_MAX_VOLUME = 0.6;
+
 function playVoiceBlob(key: string, blob: Blob, volume: number): void {
   let howl = voiceHowls.get(key);
   if (!howl) {
@@ -135,7 +138,7 @@ function playVoiceBlob(key: string, blob: Blob, volume: number): void {
   }
   const target = howl;
   playingHowl = target;
-  target.volume(volume);
+  target.volume(volume * VOICE_MAX_VOLUME);
   soundManager.duck(true);
   const restore = () => {
     if (playingHowl !== target) return;
@@ -192,7 +195,7 @@ function speakWithBrowser(reading: string, gender: VoiceGender, options: SpeakOp
   if (voice) utterance.voice = voice;
   utterance.pitch = STYLE[gender].pitch;
   utterance.rate = STYLE[gender].rate;
-  utterance.volume = volume;
+  utterance.volume = volume * VOICE_MAX_VOLUME;
 
   current = utterance;
   soundManager.duck(true);

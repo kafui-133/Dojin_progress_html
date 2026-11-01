@@ -59,16 +59,16 @@ export const DEFAULT_BGM_NORMAL = "synthwave";
 export const DEFAULT_BGM_FEVER = "hyperpop";
 
 /**
- * 音量の設定（0〜1）を 1 にしたときの大きさ。設定の初期値 0.5 で、BGM はこれまでと同じ大きさになる。
+ * 音量の設定（0〜1）を 1 にしたときの大きさ。作業中ずっと鳴るので、全体に控えめにしている。
  * 線の効果音は数が多いので、ほかの効果音より小さめにする。
  */
-const SE_MAX_VOLUME = 1;
+const SE_MAX_VOLUME = 0.6;
 const STROKE_RATIO = 0.56;
 /** 線の効果音の音階（メジャーペンタトニック、半音単位） */
 const PENTATONIC = [0, 2, 4, 7, 9];
 /** 2オクターブ上まで上がったら折り返す */
 const STROKE_NOTES = 11;
-const BGM_MAX_VOLUME = 0.7;
+const BGM_MAX_VOLUME = 0.4;
 /** 声の読み上げ中は BGM をこの割合まで下げる */
 const DUCK_RATIO = 0.3;
 const BGM_FADE_MS = 800;

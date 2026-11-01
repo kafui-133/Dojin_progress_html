@@ -658,14 +658,14 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   // ヘッダーの backdrop-blur の中だと fixed がヘッダー基準になるため、body 直下に出す
   return createPortal(
     <div
-      className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
-        className="flex w-full max-w-xl flex-col gap-4 koma p-5 text-zinc-100"
+        className="flex w-full max-w-xl flex-col gap-4 koma p-5 text-zinc-100 sm:my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
