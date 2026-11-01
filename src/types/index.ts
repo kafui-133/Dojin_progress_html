@@ -154,6 +154,9 @@ export interface AppSettings {
   isBgmOn: boolean;         // BGM を鳴らしてよいか（ON でも連続タップ中・描き続けている間のみ鳴る）
   isBridgeEnabled: boolean; // クリスタ連携ブリッジに接続するか
   isStrokeSoundOn: boolean; // 線・やり直しの効果音
+  seVolume: number;         // 効果音の音量（0〜1）
+  voiceVolume: number;      // 読み上げの音量（0〜1）
+  bgmVolume: number;        // BGM の音量（0〜1）
   bgmNormalId: string;      // 作業中の BGM
   bgmFeverId: string;       // フィーバー・ゾーン中の BGM
   voiceMode: VoiceModeSetting; // カットインの読み上げ

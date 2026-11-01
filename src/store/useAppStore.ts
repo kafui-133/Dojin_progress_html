@@ -360,6 +360,9 @@ const initialSettings: AppSettings = {
   // 配布版はブリッジを内蔵しているので最初から ON
   isBridgeEnabled: IS_DESKTOP,
   isStrokeSoundOn: true,
+  seVolume: 0.5,
+  voiceVolume: 0.5,
+  bgmVolume: 0.5,
   bgmNormalId: DEFAULT_BGM_NORMAL,
   bgmFeverId: DEFAULT_BGM_FEVER,
   voiceMode: "female",

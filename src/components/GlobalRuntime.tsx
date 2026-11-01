@@ -24,6 +24,16 @@ function BridgeConnection() {
   return null;
 }
 
+/** 設定の音量を効果音・BGM に伝える（読み上げの音量は読み上げるたびに設定から読む） */
+function VolumeSync() {
+  const seVolume = useAppStore((s) => s.seVolume);
+  const bgmVolume = useAppStore((s) => s.bgmVolume);
+  useEffect(() => {
+    soundManager.setVolumes({ se: seVolume, bgm: bgmVolume });
+  }, [seVolume, bgmVolume]);
+  return null;
+}
+
 /** ポモドーロの時間を見て、作業⇄休憩を切り替える。休憩に入る・終わるときは声で知らせる */
 function PomodoroController() {
   useEffect(() => {
@@ -85,6 +95,7 @@ export default function GlobalRuntime() {
   return (
     <>
       <BridgeConnection />
+      <VolumeSync />
       <PomodoroController />
       <EffectOverlay />
       <RestBanner />
