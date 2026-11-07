@@ -198,7 +198,7 @@ export default function ProjectDialog({ onClose }: { onClose: () => void }) {
       >
         <div className="flex items-center justify-between">
           <h2 id="project-title" className="text-lg font-black">
-            プロジェクト
+            プロジェクト・データの保存
           </h2>
           <button type="button" onClick={onClose} aria-label="閉じる" className="rounded-full p-1.5 hover:bg-zinc-800">
             <X className="size-5" />
