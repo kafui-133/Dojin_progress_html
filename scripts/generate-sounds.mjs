@@ -1,4 +1,4 @@
-// 仮の効果音・BGM(WAV)を合成して public/sounds/ に書き出す。
+// 仮の効果音（標準＋選べるセット）・BGM(WAV)を合成して public/sounds/ に書き出す。
 // 本番の音源に差し替えるまでのプレースホルダー。実行: node scripts/generate-sounds.mjs
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -39,10 +39,11 @@ const sine = (p) => Math.sin(p);
 const square = (p) => (Math.sin(p) >= 0 ? 1 : -1);
 const triangle = (p) => (2 / Math.PI) * Math.asin(Math.sin(p));
 
-function toWav(samples) {
+/** level: ピークをそろえたあとに掛ける倍率（矩形波など、同じピークでもうるさい音を下げる） */
+function toWav(samples, level = 1) {
   let peak = 1e-6;
   for (const s of samples) peak = Math.max(peak, Math.abs(s));
-  const gain = 0.89 / peak;
+  const gain = (0.89 * level) / peak;
   const buf = Buffer.alloc(44 + samples.length * 2);
   buf.write("RIFF", 0);
   buf.writeUInt32LE(36 + samples.length * 2, 4);
@@ -241,6 +242,107 @@ const bgmEurobeat = loop(160, 8, ({ buf, t0, beat, chord }) => {
   }
 });
 
+// ---- 効果音セット（設定で選べる。標準は上の se_*.wav） ----
+// BGM のノイズと乱数を分けて、これまでのファイルが変わらないようにする
+
+let seSeed = 7;
+const seNoise = () => {
+  seSeed = (seSeed * 1103515245 + 12345) % 2147483648;
+  return (seSeed / 2147483648) * 2 - 1;
+};
+
+/** ノイズを一次フィルターで削った音（lp: 0〜1 で大きいほど高音を残す / hp: 低音を削る） */
+function noiseHit(seconds, envAt, { lp = 1, hp = 0 } = {}) {
+  let low = 0;
+  let prevLow = 0;
+  return render(seconds, (t) => {
+    low += lp * (seNoise() - low);
+    const out = low - hp * prevLow;
+    prevLow = low;
+    return out * envAt(t);
+  });
+}
+
+const C4 = 261.63;
+
+// マンガ: 紙・ペン・太鼓の音
+const mangaSet = {
+  // 紙を指で叩く「トッ」
+  click: mix(
+    noiseHit(0.06, (t) => Math.exp(-t * 90), { lp: 0.35 }),
+    sweep(0.06, (t) => 220 - t * 1500, sine, (t) => 0.6 * Math.exp(-t * 70)),
+  ),
+  // 決めゴマの「ドンッ！」と、シャーンと響く余韻
+  feverImpact: mix(
+    sweep(0.8, (t) => 55 + 90 * Math.exp(-t * 14), sine, (t) => Math.exp(-t * 4.5)),
+    noiseHit(0.12, (t) => 0.7 * Math.exp(-t * 35), { lp: 0.25 }),
+    offset(noiseHit(1.1, (t) => 0.22 * Math.min(1, t * 80) * Math.exp(-t * 3.2), { lp: 0.9, hp: 0.95 }), 0.03),
+  ),
+  // 太鼓「ドン・ドン・ドドン」＋ 和音の「ジャーン」
+  fanfare: mix(
+    ...[0, 0.18, 0.36, 0.45].map((at) =>
+      offset(sweep(0.3, (t) => 70 + 60 * Math.exp(-t * 25), sine, (t) => 0.9 * Math.exp(-t * 9)), at),
+    ),
+    ...[392, 523.25, 659.25, 783.99].map((f) =>
+      offset(sweep(1.0, () => f, (p) => 0.5 * sine(p) + 0.3 * triangle(2 * p) + 0.2 * sine(3 * p), (t) => 0.22 * Math.min(1, t * 120) * Math.exp(-t * 2.4)), 0.6),
+    ),
+    offset(noiseHit(0.9, (t) => 0.18 * Math.exp(-t * 3.5), { lp: 0.9, hp: 0.95 }), 0.6),
+  ),
+  // ペン先が紙をこする「シュッ」（音の高さで音階をつける）
+  stroke: mix(
+    noiseHit(0.13, (t) => Math.min(1, t * 250) * Math.exp(-t * 26), { lp: 0.5, hp: 0.6 }),
+    sweep(0.13, () => C4, triangle, (t) => 0.35 * Math.min(1, t * 400) * Math.exp(-t * 22)),
+  ),
+  // 消しゴムでこする「ゴシゴシ」
+  undo: mix(
+    noiseHit(0.09, (t) => Math.min(1, t * 150) * Math.exp(-t * 30), { lp: 0.3 }),
+    offset(noiseHit(0.09, (t) => 0.8 * Math.min(1, t * 150) * Math.exp(-t * 30), { lp: 0.25 }), 0.1),
+  ),
+};
+
+// レトロゲーム: 矩形波とノイズの 8bit 風
+const blip = (freq, seconds, vol = 0.5, decay = 18) =>
+  sweep(seconds, () => freq, square, (t) => vol * (t < seconds - 0.005 ? 1 : 0) * Math.exp(-t * decay));
+const retroSet = {
+  click: mix(blip(1046.5, 0.04, 0.45, 10), offset(blip(1568, 0.05, 0.4, 10), 0.04)),
+  feverImpact: mix(
+    noiseHit(0.5, (t) => 0.8 * Math.exp(-t * 7), { lp: 0.6 }),
+    ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => offset(blip(261.63 * Math.pow(2, i / 4), 0.06, 0.35, 5), 0.08 + i * 0.05)),
+  ),
+  fanfare: mix(
+    ...[523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5].map((f, i) => offset(blip(f, 0.09, 0.4, 6), i * 0.09)),
+    offset(blip(1046.5, 0.6, 0.4, 3), 0.54),
+    offset(sweep(0.6, () => 261.63, triangle, (t) => 0.5 * Math.exp(-t * 3)), 0.54),
+  ),
+  stroke: blip(C4, 0.11, 0.45, 20),
+  undo: mix(...[784, 659.25, 523.25, 392].map((f, i) => offset(blip(f, 0.045, 0.4, 12), i * 0.04))),
+};
+
+// やさしい: 木琴・鈴のような丸い音
+const mallet = (freq, seconds, vol = 0.5, decay = 9) =>
+  sweep(seconds, () => freq, (p) => 0.8 * sine(p) + 0.2 * sine(4 * p), (t) => vol * Math.min(1, t * 600) * Math.exp(-t * decay));
+const bell = (freq, seconds, vol = 0.3) =>
+  sweep(seconds, () => freq, (p) => 0.7 * sine(p) + 0.2 * sine(2.76 * p) + 0.1 * sine(5.4 * p), (t) => vol * Math.min(1, t * 400) * Math.exp(-t * 3));
+const softSet = {
+  click: mallet(880, 0.12, 0.6, 30),
+  feverImpact: mix(
+      sweep(1.2, () => 130.81, sine, (t) => 0.5 * Math.min(1, t * 6) * Math.exp(-t * 2)),
+      ...[523.25, 659.25, 783.99, 1046.5].map((f, i) => offset(bell(f, 1.2, 0.25), i * 0.07)),
+    ),
+  fanfare: mix(
+      ...[523.25, 659.25, 783.99].map((f, i) => offset(mallet(f, 0.4, 0.45, 7), i * 0.12)),
+      offset(bell(1046.5, 1.4, 0.35), 0.36),
+      offset(bell(523.25, 1.4, 0.25), 0.36),
+    ),
+  stroke: mallet(C4, 0.3, 0.5, 12),
+  undo: mix(mallet(659.25, 0.18, 0.4, 16), offset(mallet(523.25, 0.25, 0.4, 12), 0.09)),
+};
+
+const SE_SET_FILES = { manga: mangaSet, retro: retroSet, soft: softSet };
+// 矩形波の短い音は、同じピークでもほかのセットより約 10dB うるさいので下げる
+const SE_LEVELS = { retro: { click: 0.34, undo: 0.35, stroke: 0.53 } };
+const SE_FILE_NAMES = { click: "click", feverImpact: "fever_impact", fanfare: "fanfare", stroke: "stroke", undo: "undo" };
+
 mkdirSync(outDir, { recursive: true });
 for (const [name, samples] of Object.entries({
   se_click: click,
@@ -256,4 +358,11 @@ for (const [name, samples] of Object.entries({
 })) {
   writeFileSync(join(outDir, `${name}.wav`), toWav(samples));
   console.log(`wrote public/sounds/${name}.wav`);
+}
+for (const [set, sounds] of Object.entries(SE_SET_FILES)) {
+  for (const [key, samples] of Object.entries(sounds)) {
+    const name = `se_${set}_${SE_FILE_NAMES[key]}`;
+    writeFileSync(join(outDir, `${name}.wav`), toWav(samples, SE_LEVELS[set]?.[key]));
+    console.log(`wrote public/sounds/${name}.wav`);
+  }
 }

@@ -3,6 +3,7 @@
 import { Download, ExternalLink, FolderOpen, Loader2, Play, Plus, Sparkles, Square, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useCustomSounds } from "@/lib/customSounds";
 import { useCustomTracks } from "@/lib/customTracks";
 import { GEMINI_ENABLED, IS_DESKTOP } from "@/lib/edition";
 import {
@@ -15,7 +16,7 @@ import {
   loadApiKey,
   saveApiKey,
 } from "@/lib/geminiTts";
-import { BGM_PRESETS, soundManager } from "@/lib/soundManager";
+import { BGM_PRESETS, SE_SETS, SOUND_EFFECTS, type SoundEffect, soundManager } from "@/lib/soundManager";
 import { cn } from "@/lib/utils";
 import {
   VOICE_MODE_LABEL,
@@ -148,6 +149,85 @@ function TrackSelect({
           <Play className="size-4" /> 試聴
         </button>
       </div>
+    </div>
+  );
+}
+
+/** 効果音ごとに、自分で選んだ音（フリー素材など）に差し替える */
+function CustomSoundList() {
+  const names = useCustomSounds((s) => s.names);
+  const setSound = useCustomSounds((s) => s.set);
+  const clearSound = useCustomSounds((s) => s.clear);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [target, setTarget] = useState<SoundEffect | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const pick = (id: SoundEffect) => {
+    setTarget(id);
+    inputRef.current?.click();
+  };
+
+  const onFile = async (file: File | undefined) => {
+    if (!file || !target) return;
+    setError(null);
+    try {
+      await setSound(target, file);
+      soundManager.previewSe(target);
+    } catch (err) {
+      setError(`「${file.name}」を使えませんでした: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg bg-zinc-800/60 p-3 text-sm">
+      <span className="text-zinc-300">自分の音に差し替える（フリー素材の wav・mp3 など）</span>
+      <ul className="flex flex-col gap-1">
+        {SOUND_EFFECTS.map((effect) => {
+          const name = names[effect.id];
+          return (
+            <li key={effect.id} className="flex flex-wrap items-center gap-2 rounded bg-zinc-900 px-2 py-1">
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-bold text-zinc-200">{effect.label}</span>
+                <span className={cn("block truncate text-xs", name ? "text-fuchsia-600" : "text-zinc-500")}>
+                  {name ?? "セットの音"}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => soundManager.previewSe(effect.id)}
+                aria-label={`${effect.label}を試聴`}
+                className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50"
+              >
+                <Play className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => pick(effect.id)}
+                className="rounded bg-zinc-800 px-2 py-1 text-xs font-bold hover:bg-zinc-700"
+              >
+                ファイルを選ぶ
+              </button>
+              {name && (
+                <button
+                  type="button"
+                  onClick={() => void clearSound(effect.id)}
+                  aria-label={`${effect.label}をセットの音に戻す`}
+                  className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50"
+                >
+                  <X className="size-4" />
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <input ref={inputRef} type="file" accept="audio/*" hidden onChange={(e) => void onFile(e.target.files?.[0])} />
+      <p className="text-xs text-zinc-500">
+        選んだ音は{IS_DESKTOP ? "この PC（アプリの中）" : "このブラウザ"}に保存されます。短い音（1秒以内）がおすすめです。素材の利用規約に従って使ってください。
+      </p>
+      {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   );
 }
@@ -643,6 +723,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const ttsEngine = savedEngine === "gemini" && !GEMINI_ENABLED ? "browser" : savedEngine;
   const isStrokeSoundOn = useAppStore((s) => s.isStrokeSoundOn);
   const seVolume = useAppStore((s) => s.seVolume);
+  const seSetId = useAppStore((s) => s.seSetId);
   const voiceVolume = useAppStore((s) => s.voiceVolume);
   const bgmVolume = useAppStore((s) => s.bgmVolume);
   const updateSettings = useAppStore((s) => s.updateSettings);
@@ -800,6 +881,34 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             onChange={(v) => updateSettings({ seVolume: v })}
             onCommit={() => soundManager.play("fanfare")}
           />
+          <div className="flex flex-col gap-1 text-sm">
+            <span className="text-zinc-300">効果音のセット</span>
+            <div className="flex gap-2">
+              <select
+                value={seSetId}
+                onChange={(e) => {
+                  updateSettings({ seSetId: e.target.value });
+                  soundManager.setSeSet(e.target.value);
+                  soundManager.previewSe("fanfare");
+                }}
+                className="min-w-0 flex-1 rounded-lg bg-zinc-800 px-3 py-2"
+              >
+                {SE_SETS.map((set) => (
+                  <option key={set.id} value={set.id}>
+                    {set.label}（{set.description}）
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => soundManager.previewSe("fanfare")}
+                className="flex shrink-0 items-center gap-1 rounded-lg bg-zinc-700 px-3 font-bold hover:bg-zinc-600"
+              >
+                <Play className="size-4" /> 試聴
+              </button>
+            </div>
+          </div>
+          <CustomSoundList />
           <Switch
             label="線を引いた・やり直したときの効果音"
             checked={isStrokeSoundOn}

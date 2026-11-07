@@ -6,6 +6,7 @@ import AudioUnlockBanner from "@/components/AudioUnlockBanner";
 import EffectOverlay from "@/components/EffectOverlay";
 import { now as clockNow, useNow } from "@/lib/clock";
 import { useBridgeStatus, useCristaBridge } from "@/lib/crista";
+import { useCustomSounds } from "@/lib/customSounds";
 import { soundManager } from "@/lib/soundManager";
 import { useIsClient } from "@/lib/useIsClient";
 import { speak, voiceOptions } from "@/lib/voice";
@@ -24,13 +25,20 @@ function BridgeConnection() {
   return null;
 }
 
-/** 設定の音量を効果音・BGM に伝える（読み上げの音量は読み上げるたびに設定から読む） */
+/** 設定の音量・効果音のセットを伝え、自分の効果音を読み込む（読み上げの音量は読み上げるたびに設定から読む） */
 function VolumeSync() {
   const seVolume = useAppStore((s) => s.seVolume);
   const bgmVolume = useAppStore((s) => s.bgmVolume);
+  const seSetId = useAppStore((s) => s.seSetId);
   useEffect(() => {
     soundManager.setVolumes({ se: seVolume, bgm: bgmVolume });
   }, [seVolume, bgmVolume]);
+  useEffect(() => {
+    soundManager.setSeSet(seSetId);
+  }, [seSetId]);
+  useEffect(() => {
+    void useCustomSounds.getState().load();
+  }, []);
   return null;
 }
 
