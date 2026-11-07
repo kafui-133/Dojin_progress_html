@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { BarChart3, LayoutDashboard, Maximize, Minimize, Music, Settings, VolumeX } from "lucide-react";
+import { BarChart3, FolderOpen, LayoutDashboard, Maximize, Minimize, Music, Settings, VolumeX } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -130,6 +130,18 @@ export default function Header() {
           className="hidden shrink-0 rounded-full bg-zinc-800 p-1.5 text-zinc-300 transition hover:bg-zinc-700 hover:text-zinc-50 sm:block"
         >
           {isFullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
+        </button>
+
+        {/* 左の原稿名のボタンと同じ画面。見つけやすいよう、設定の隣にも置く */}
+        <button
+          type="button"
+          onClick={() => setIsProjectOpen(true)}
+          aria-label="プロジェクト・データの保存"
+          title="プロジェクトの切り替え・新規作成・JSON の保存と読み込み"
+          className="flex shrink-0 items-center gap-1 rounded-full bg-zinc-800 px-2 py-1 text-sm font-bold text-zinc-300 transition hover:bg-zinc-700 hover:text-zinc-50 sm:px-3"
+        >
+          <FolderOpen className="size-4" />
+          <span className="hidden md:inline">プロジェクト・保存</span>
         </button>
 
         <button
