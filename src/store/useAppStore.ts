@@ -408,6 +408,8 @@ export interface AppState extends AppSettings {
   completeStage: (page: number, stage: StageId, now?: number) => ProgressActionResult | null;
   /** ページの工程の完了を取り消す */
   undoStage: (page: number, stage: StageId) => void;
+  /** 工程の完了日を指定して記録する・直す（過去の分の記録用。EXP・コイン・演出は出さない） */
+  setStageDate: (page: number, stage: StageId, at: number) => void;
   /** クリスタで線を1本引いた */
   recordStroke: (stroke: { durationMs: number }, now?: number) => StrokeResult;
   /** クリスタでやり直し（Ctrl+Z）した */
@@ -629,6 +631,20 @@ export const useAppStore = create<AppState>()(
             projects: state.projects.map((p) => (p.id === project.id ? { ...p, manuscript } : p)),
           });
         },
+
+        setStageDate: (pageIndex, stageId, at) =>
+          set((state) => {
+            const project = getActiveProject(state);
+            if (project.type !== "manga" || !project.manuscript.pages[pageIndex]) return {};
+            const pages = project.manuscript.pages.map((p, i) =>
+              i === pageIndex ? { done: { ...p.done, [stageId]: at } } : p,
+            );
+            return {
+              projects: state.projects.map((p) =>
+                p.id === project.id ? { ...p, manuscript: { ...p.manuscript, pages } } : p,
+              ),
+            };
+          }),
 
         undoStage: (pageIndex, stageId) =>
           set((state) => {

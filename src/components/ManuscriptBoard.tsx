@@ -1,11 +1,12 @@
 "use client";
 
-import { Check } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { CalendarDays, Check } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { now as clockNow } from "@/lib/clock";
 import { soundManager } from "@/lib/soundManager";
 import { STAGES, getBoardStats, isPageComplete } from "@/lib/stages";
 import { cn } from "@/lib/utils";
-import { useActiveProject, useAppStore } from "@/store/useAppStore";
+import { toDateString, useActiveProject, useAppStore } from "@/store/useAppStore";
 import type { StageId } from "@/types";
 import Icon from "@/components/Icon";
 
@@ -14,14 +15,25 @@ function formatDay(ms: number): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+/** 日付（YYYY-MM-DD）のお昼の時刻。時差で前後の日にずれないようにする */
+function dateToMs(date: string): number {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(y, m - 1, d, 12).getTime();
+}
+
 /**
  * ページ × 工程（コマ割り・セリフ入れ・下書き・ペン入れ・仕上げ）のボタン表。
  * 押すとその日付で完了を記録し、演出が出る。完了済みを押すと取り消せる。
+ * 「日付を指定して記録」にすると、過去の分を選んだ日付で記録・日付を直せる（EXP や演出は出さない）。
  */
 export default function ManuscriptBoard() {
   const { manuscript } = useActiveProject();
   const completeStage = useAppStore((s) => s.completeStage);
   const undoStage = useAppStore((s) => s.undoStage);
+  const setStageDate = useAppStore((s) => s.setStageDate);
+  const today = toDateString(new Date(clockNow()));
+  const [pickMode, setPickMode] = useState(false);
+  const [pickDate, setPickDate] = useState(today);
   const scrollRef = useRef<HTMLDivElement>(null);
   const currentRowRef = useRef<HTMLTableRowElement>(null);
 
@@ -36,12 +48,22 @@ export default function ManuscriptBoard() {
   }, [currentPage]);
 
   const onCell = (page: number, stage: StageId, doneAt: number | undefined) => {
+    const label = STAGES.find((s) => s.id === stage)?.label;
+    // 今日の分は、日付を指定していても普通に記録する（演出・EXP あり）
+    const date = pickMode ? pickDate : today;
     if (doneAt === undefined) {
       soundManager.play("click");
-      completeStage(page, stage);
+      if (date === today) completeStage(page, stage);
+      else setStageDate(page, stage, dateToMs(date));
       return;
     }
-    const label = STAGES.find((s) => s.id === stage)?.label;
+    if (pickMode && toDateString(new Date(doneAt)) !== date) {
+      const at = dateToMs(date);
+      if (confirm(`P${page + 1} の「${label}」の完了日を ${formatDay(doneAt)} → ${formatDay(at)} に直しますか？`)) {
+        setStageDate(page, stage, at);
+      }
+      return;
+    }
     if (confirm(`P${page + 1} の「${label}」の完了（${formatDay(doneAt)}）を取り消しますか？`)) undoStage(page, stage);
   };
 
@@ -54,6 +76,31 @@ export default function ManuscriptBoard() {
         <span className="text-xs text-zinc-400 tabular-nums">
           {board.done} / {board.total} 工程・{board.pagesComplete}ページ完成
         </span>
+      </div>
+
+      <div className={cn("flex flex-wrap items-center gap-2 rounded-lg px-2 py-1.5 text-xs", pickMode ? "tone-shu border border-fuchsia-500" : "bg-zinc-800/60")}>
+        <label className="flex cursor-pointer items-center gap-1.5 font-bold text-zinc-300">
+          <input
+            type="checkbox"
+            checked={pickMode}
+            onChange={(e) => {
+              setPickMode(e.target.checked);
+              if (e.target.checked) setPickDate(today);
+            }}
+            className="accent-fuchsia-500"
+          />
+          <CalendarDays className="size-4" /> 日付を指定して記録
+        </label>
+        {pickMode && (
+          <input
+            type="date"
+            value={pickDate}
+            max={today}
+            onChange={(e) => e.target.value && setPickDate(e.target.value > today ? today : e.target.value)}
+            aria-label="記録する日付"
+            className="rounded bg-zinc-900 px-2 py-0.5 font-bold tabular-nums ring-1 ring-zinc-600"
+          />
+        )}
       </div>
 
       <div ref={scrollRef} className="max-h-[420px] overflow-y-auto rounded-lg border border-zinc-600">
@@ -116,7 +163,11 @@ export default function ManuscriptBoard() {
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-zinc-500">押すと今日の日付で完了を記録します。完了済みを押すと取り消せます。</p>
+      <p className="text-xs text-zinc-500">
+        {pickMode
+          ? "押すと選んだ日付で完了を記録します（今日以外は EXP・演出なし）。完了済みを押すと、その日付に直せます（同じ日付なら取り消し）。"
+          : "押すと今日の日付で完了を記録します。完了済みを押すと取り消せます。過去の分は「日付を指定して記録」で付けられます。"}
+      </p>
     </div>
   );
 }
