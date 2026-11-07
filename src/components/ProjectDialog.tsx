@@ -12,7 +12,7 @@ import {
   downloadExport,
   parseImport,
 } from "@/lib/dataTransfer";
-import { getBoardStats } from "@/lib/stages";
+import { getBoardStats, hasPages, stagesFor } from "@/lib/stages";
 import { cn } from "@/lib/utils";
 import { DEFAULT_TARGET_PAGES, EMPTY_DAY, MAX_PAGES, formatDuration, useAppStore } from "@/store/useAppStore";
 import type { Project, ProjectType } from "@/types";
@@ -21,18 +21,35 @@ import Icon, { type IconName } from "@/components/Icon";
 export const PROJECT_TYPE_LABEL: Record<ProjectType, string> = {
   manga: "マンガ",
   illustration: "イラスト",
+  illustbook: "イラスト本",
 };
 
 export const PROJECT_TYPE_ICON: Record<ProjectType, IconName> = {
   manga: "manuscript",
   illustration: "palette",
+  illustbook: "brush",
+};
+
+const NEW_PROJECT_HINT: Record<ProjectType, { placeholder: string; note: string }> = {
+  manga: {
+    placeholder: "例: 冬コミ新刊",
+    note: "マンガはページごとの工程（コマ割り〜仕上げ）と、線・セリフなどの作業量を記録します。",
+  },
+  illustration: {
+    placeholder: "例: 誕生日イラスト",
+    note: "イラストは線の本数・長さ・ペン時間・やり直し（Ctrl+Z）を記録し、イラスト用のグラフで見られます。",
+  },
+  illustbook: {
+    placeholder: "例: 夏コミのイラスト集",
+    note: "イラスト本はページごとの工程（下書き・ペン入れ・仕上げ）を記録します。コマ割り・セリフ入れはありません。",
+  },
 };
 
 function projectSummary(project: Project): string {
   const days = Object.values(project.dailyStats);
   const penMs = days.reduce((sum, d) => sum + (d ?? EMPTY_DAY).strokeMs, 0);
-  if (project.type === "manga") {
-    const board = getBoardStats(project.manuscript);
+  if (hasPages(project.type)) {
+    const board = getBoardStats(project.manuscript, stagesFor(project.type));
     return `${project.targetPages}P・進捗 ${Math.floor(board.percent)}%・ペン ${formatDuration(penMs)}`;
   }
   const strokes = days.reduce((sum, d) => sum + d.strokes, 0);
@@ -56,7 +73,7 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
         onCreated();
       }}
     >
-      <div className="grid grid-cols-2 gap-1 rounded-lg bg-zinc-900 p-1">
+      <div className="grid grid-cols-3 gap-1 rounded-lg bg-zinc-900 p-1">
         {(Object.keys(PROJECT_TYPE_LABEL) as ProjectType[]).map((t) => (
           <button
             key={t}
@@ -76,12 +93,12 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder={type === "manga" ? "例: 冬コミ新刊" : "例: 誕生日イラスト"}
+          placeholder={NEW_PROJECT_HINT[type].placeholder}
           className="rounded-lg bg-zinc-900 px-3 py-2"
         />
       </label>
       <div className="flex flex-wrap gap-3">
-        {type === "manga" && (
+        {hasPages(type) && (
           <label className="flex flex-col gap-1">
             総ページ数
             <input
@@ -105,9 +122,7 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
         </label>
       </div>
       <p className="text-xs text-zinc-500">
-        {type === "manga"
-          ? "マンガはページごとの工程（コマ割り〜仕上げ）と、線・セリフなどの作業量を記録します。"
-          : "イラストは線の本数・長さ・ペン時間・やり直し（Ctrl+Z）を記録し、イラスト用のグラフで見られます。"}
+        {NEW_PROJECT_HINT[type].note}
       </p>
       <button type="submit" className="flex items-center justify-center gap-1 rounded-lg bg-fuchsia-600 py-2 font-bold hover:bg-fuchsia-500">
         <Plus className="size-4" /> 作成して切り替える

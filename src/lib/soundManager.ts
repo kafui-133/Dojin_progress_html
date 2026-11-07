@@ -85,6 +85,30 @@ export const BGM_PRESETS: BgmPreset[] = [
     description: "160bpm・修羅場を駆け抜ける",
     sources: ["/sounds/bgm_eurobeat.mp3", "/sounds/bgm_eurobeat.wav"],
   },
+  {
+    id: "jazz",
+    label: "ジャズ",
+    description: "100bpm・スウィングするおしゃれな作業 BGM",
+    sources: ["/sounds/bgm_jazz.mp3", "/sounds/bgm_jazz.wav"],
+  },
+  {
+    id: "wafu",
+    label: "和風（祭り太鼓）",
+    description: "120bpm・太鼓と琴で景気よく",
+    sources: ["/sounds/bgm_wafu.mp3", "/sounds/bgm_wafu.wav"],
+  },
+  {
+    id: "piano",
+    label: "静かなピアノ",
+    description: "70bpm・ドラムなし。休憩や集中したいときに",
+    sources: ["/sounds/bgm_piano.mp3", "/sounds/bgm_piano.wav"],
+  },
+  {
+    id: "dnb",
+    label: "ドラムンベース",
+    description: "174bpm・速いビートで一気に描く",
+    sources: ["/sounds/bgm_dnb.mp3", "/sounds/bgm_dnb.wav"],
+  },
 ];
 
 export const DEFAULT_BGM_NORMAL = "synthwave";
@@ -185,10 +209,12 @@ class SoundManager {
         { loop: true, volume: this.targetVolume(), format: source.format },
         () => {
           this.bgm.delete(id);
-          // 再生中の曲が読み込めなかったら次の候補で鳴らし直す
+          // 再生中・試聴中の曲が読み込めなかったら次の候補で鳴らし直す
           if (this.currentBgm === id) {
             this.currentBgm = null;
             this.setBgm(id);
+          } else if (this.previewing === id) {
+            this.fadeIn(id);
           }
         },
       );

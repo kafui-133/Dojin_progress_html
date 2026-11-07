@@ -1,4 +1,4 @@
-import { STAGES, resizePages } from "@/lib/stages";
+import { STAGES, hasPages, resizePages } from "@/lib/stages";
 import {
   type AppState,
   MAX_PAGES,
@@ -16,11 +16,12 @@ import type { AppSettings, CspUsageDay, ManuscriptPage, Project, ProjectType, St
  * 自分の曲・作った声の音声は大きいので含めない（API キーも含めない）。
  */
 
-export type ExportKind = "manga" | "illustration" | "all";
+export type ExportKind = "manga" | "illustration" | "illustbook" | "all";
 
 export const EXPORT_KIND_LABEL: Record<ExportKind, string> = {
   manga: "マンガのデータ",
   illustration: "イラストのデータ",
+  illustbook: "イラスト本のデータ",
   all: "統合データ（すべて）",
 };
 
@@ -89,8 +90,8 @@ function sanitizePage(raw: unknown): ManuscriptPage {
 
 function sanitizeProject(raw: unknown): Project {
   if (!isRecord(raw) || typeof raw.id !== "string" || !raw.id) throw new ImportError("プロジェクトの形式が正しくありません");
-  const type: ProjectType = raw.type === "illustration" ? "illustration" : "manga";
-  const targetPages = type === "manga" ? Math.min(MAX_PAGES, Math.max(1, Math.floor(toNumber(raw.targetPages, 1)))) : 0;
+  const type: ProjectType = raw.type === "illustration" || raw.type === "illustbook" ? raw.type : "manga";
+  const targetPages = hasPages(type) ? Math.min(MAX_PAGES, Math.max(1, Math.floor(toNumber(raw.targetPages, 1)))) : 0;
   const manuscript = isRecord(raw.manuscript) ? raw.manuscript : {};
   const pages = Array.isArray(manuscript.pages) ? manuscript.pages.map(sanitizePage) : [];
   const dailyRaw = isRecord(raw.dailyStats) ? raw.dailyStats : {};
@@ -148,7 +149,9 @@ export function parseImport(text: string): ExportFile {
   }
   if (!isRecord(data) || data.app !== "syuraba-booster") throw new ImportError("進捗ブースターで保存したファイルではありません");
   const kind = data.kind;
-  if (kind !== "manga" && kind !== "illustration" && kind !== "all") throw new ImportError("データの種類が分かりません");
+  if (kind !== "manga" && kind !== "illustration" && kind !== "illustbook" && kind !== "all") {
+    throw new ImportError("データの種類が分かりません");
+  }
   if (!Array.isArray(data.projects)) throw new ImportError("プロジェクトが入っていません");
 
   const projects = data.projects.map(sanitizeProject);
@@ -178,9 +181,11 @@ export function parseImport(text: string): ExportFile {
   return file;
 }
 
+const TYPE_NAME: Record<ProjectType, string> = { manga: "マンガ", illustration: "イラスト", illustbook: "イラスト本" };
+
 /** 読み込んだ内容の説明（確認ダイアログ用） */
 export function describeImport(file: ExportFile, state: AppState = useAppStore.getState()): string {
-  const names = file.projects.map((p) => `・${p.type === "manga" ? "マンガ" : "イラスト"}「${p.name}」`).join("\n");
+  const names = file.projects.map((p) => `・${TYPE_NAME[p.type]}「${p.name}」`).join("\n");
   if (file.kind === "all") {
     return `統合データを読み込みます。いまの記録（${state.projects.length} プロジェクト・EXP など）はすべて置き換わります。\n\n${names}`;
   }

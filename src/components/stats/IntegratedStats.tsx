@@ -13,7 +13,7 @@ import {
   axisProps,
 } from "@/components/stats/parts";
 import { PROJECT_TYPE_LABEL } from "@/components/ProjectDialog";
-import { getBoardStats } from "@/lib/stages";
+import { getBoardStats, hasPages, stagesFor } from "@/lib/stages";
 import {
   ACTIVITY_METRICS,
   type ActivityMetric,
@@ -31,7 +31,7 @@ import { EMPTY_DAY, formatDuration, formatLength } from "@/store/useAppStore";
 import type { Project } from "@/types";
 
 /** マンガ・イラストの色（カテゴリの1番目・2番目。検証済みの配色） */
-const TYPE_COLORS = { manga: "#3987e5", illustration: "#d95926" };
+const TYPE_COLORS = { manga: "#3987e5", illustration: "#d95926", illustbook: "#199e70" };
 const PEN_TIME = ACTIVITY_METRICS.find((m) => m.id === "strokeMs")!;
 const INTEGRATED_METRICS = ACTIVITY_METRICS.filter((m) => ["strokeMs", "strokes", "strokeLength", "undos"].includes(m.id));
 
@@ -67,8 +67,8 @@ export default function IntegratedStats({ projects, period, today }: { projects:
     0,
   );
   const pagesDone = projects
-    .filter((p) => p.type === "manga")
-    .reduce((sum, p) => sum + getBoardStats(p.manuscript).pagesComplete, 0);
+    .filter((p) => hasPages(p.type))
+    .reduce((sum, p) => sum + getBoardStats(p.manuscript, stagesFor(p.type)).pagesComplete, 0);
 
   return (
     <div className="flex flex-col gap-4">
@@ -82,24 +82,25 @@ export default function IntegratedStats({ projects, period, today }: { projects:
           status={thisWeek === 0 && lastWeek === 0 ? undefined : thisWeek >= lastWeek ? "good" : "critical"}
         />
         <StatTile label="線の総延長" value={formatLength(total.strokeLength)} sub="全プロジェクト" />
-        <StatTile label="完成したページ" value={`${pagesDone}`} sub="マンガの合計" />
+        <StatTile label="完成したページ" value={`${pagesDone}`} sub="マンガ・イラスト本の合計" />
         <StatTile
           label="プロジェクト"
           value={`${projects.length}`}
-          sub={`マンガ ${projects.filter((p) => p.type === "manga").length}・イラスト ${projects.filter((p) => p.type === "illustration").length}`}
+          sub={`マンガ ${projects.filter((p) => p.type === "manga").length}・イラスト ${projects.filter((p) => p.type === "illustration").length}・イラスト本 ${projects.filter((p) => p.type === "illustbook").length}`}
         />
       </div>
 
-      <Card title="お絵描きカレンダー" subtitle="マンガもイラストも合わせて、毎日どれだけペンを動かしたか（濃いほど長い）">
+      <Card title="お絵描きカレンダー" subtitle="マンガ・イラスト・イラスト本を合わせて、毎日どれだけペンを動かしたか（濃いほど長い）">
         <CalendarHeatmap dailyStats={merged} today={today} metric={PEN_TIME} weeks={30} />
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <Card title="日ごとの作業量（マンガ・イラスト別）" subtitle="積み上げの高さが、その日の合計です">
+        <Card title="日ごとの作業量（種類別）" subtitle="積み上げの高さが、その日の合計です">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex gap-3">
               <LegendItem color={TYPE_COLORS.manga} label="マンガ" shape="rect" />
               <LegendItem color={TYPE_COLORS.illustration} label="イラスト" shape="rect" />
+              <LegendItem color={TYPE_COLORS.illustbook} label="イラスト本" shape="rect" />
             </div>
             <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="指標">
               {INTEGRATED_METRICS.map((m) => (
@@ -130,11 +131,12 @@ export default function IntegratedStats({ projects, period, today }: { projects:
                   content={(props) => <ChartTooltip {...props} unit={` ${metric.unit}`} />}
                 />
                 <Bar dataKey="manga" name="マンガ" stackId="type" fill={TYPE_COLORS.manga} stroke={COLORS.surface} strokeWidth={2} maxBarSize={24} />
+                <Bar dataKey="illustration" name="イラスト" stackId="type" fill={TYPE_COLORS.illustration} stroke={COLORS.surface} strokeWidth={2} maxBarSize={24} />
                 <Bar
-                  dataKey="illustration"
-                  name="イラスト"
+                  dataKey="illustbook"
+                  name="イラスト本"
                   stackId="type"
-                  fill={TYPE_COLORS.illustration}
+                  fill={TYPE_COLORS.illustbook}
                   stroke={COLORS.surface}
                   strokeWidth={2}
                   maxBarSize={24}

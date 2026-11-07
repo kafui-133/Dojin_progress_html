@@ -1,5 +1,5 @@
 import type { IconName } from "@/components/Icon";
-import type { Manuscript, ManuscriptPage, StageId } from "@/types";
+import type { Manuscript, ManuscriptPage, ProjectType, StageId } from "@/types";
 
 /** 1ページあたりの工程（この順番で進める想定） */
 export interface StageDefinition {
@@ -66,6 +66,19 @@ export const STAGES: StageDefinition[] = [
 
 export const STAGE_BY_ID = Object.fromEntries(STAGES.map((s) => [s.id, s])) as Record<StageId, StageDefinition>;
 
+/** イラスト本の工程（コマ割り・セリフ入れは無い） */
+export const ILLUST_BOOK_STAGES = STAGES.filter((s) => s.id !== "paneling" && s.id !== "dialogue");
+
+/** ページごとに工程を記録するプロジェクトか（マンガ・イラスト本） */
+export function hasPages(type: ProjectType): boolean {
+  return type !== "illustration";
+}
+
+/** プロジェクトの種類ごとの工程 */
+export function stagesFor(type: ProjectType): StageDefinition[] {
+  return type === "illustbook" ? ILLUST_BOOK_STAGES : STAGES;
+}
+
 export const PAGE_COMPLETE_LINE = "1ページ完成！！";
 
 export function emptyPage(): ManuscriptPage {
@@ -79,8 +92,8 @@ export function resizePages(pages: ManuscriptPage[], count: number): ManuscriptP
   return [...pages, ...Array.from({ length: count - pages.length }, emptyPage)];
 }
 
-export function isPageComplete(page: ManuscriptPage): boolean {
-  return STAGES.every((stage) => page.done[stage.id] !== undefined);
+export function isPageComplete(page: ManuscriptPage, stages: StageDefinition[] = STAGES): boolean {
+  return stages.every((stage) => page.done[stage.id] !== undefined);
 }
 
 export interface BoardStats {
@@ -91,15 +104,15 @@ export interface BoardStats {
   byStage: Record<StageId, number>;
 }
 
-export function getBoardStats(manuscript: Manuscript): BoardStats {
+export function getBoardStats(manuscript: Manuscript, stages: StageDefinition[] = STAGES): BoardStats {
   const byStage = Object.fromEntries(STAGES.map((s) => [s.id, 0])) as Record<StageId, number>;
   let pagesComplete = 0;
   for (const page of manuscript.pages) {
-    for (const stage of STAGES) if (page.done[stage.id] !== undefined) byStage[stage.id]++;
-    if (isPageComplete(page)) pagesComplete++;
+    for (const stage of stages) if (page.done[stage.id] !== undefined) byStage[stage.id]++;
+    if (isPageComplete(page, stages)) pagesComplete++;
   }
   const done = Object.values(byStage).reduce((a, b) => a + b, 0);
-  const total = manuscript.pages.length * STAGES.length;
+  const total = manuscript.pages.length * stages.length;
   return { done, total, percent: total > 0 ? (done / total) * 100 : 0, pagesComplete, byStage };
 }
 

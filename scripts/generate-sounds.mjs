@@ -366,3 +366,73 @@ for (const [set, sounds] of Object.entries(SE_SET_FILES)) {
     console.log(`wrote public/sounds/${name}.wav`);
   }
 }
+
+// ---- 追加の BGM（あとから増やした分。前の曲のノイズに影響しないよう、ここで作る） ----
+
+// 100bpm ジャズ風: スウィングするライド、ウォーキングベース、セブンスのコード
+const swing = (beat, i) => (i % 2 ? beat * 0.66 : 0);
+const bgmJazz = loop(100, 8, ({ buf, t0, beat, chord }) => {
+  for (let i = 0; i < 8; i++) {
+    const at = Math.floor(i / 2) * beat + swing(beat, i);
+    place(buf, t0 + at, hat(i % 2 ? 0.09 : 0.14, 30));
+  }
+  place(buf, t0 + beat, snare(0.12, 25));
+  place(buf, t0 + beat * 3, snare(0.12, 25));
+  const walk = [chord.root, chord.root + 4, chord.root + 7, chord.root + 9];
+  walk.forEach((n, b) => place(buf, t0 + b * beat, tone(hz(n), beat * 0.9, (p) => 0.8 * sine(p) + 0.2 * triangle(p), 0.4, 2.5)));
+  const seventh = chord.tones[0] + 10;
+  for (const at of [0, 1.66, 2.66]) {
+    for (const n of [...chord.tones, seventh]) {
+      place(buf, t0 + at * beat, tone(hz(n - 12), beat * 0.8, (p) => 0.7 * sine(p) + 0.3 * sine(3 * p), 0.06, 3));
+    }
+  }
+});
+
+// 120bpm 和風（祭り太鼓）: 太鼓と、陽音階の琴のようなフレーズ
+const YO = [62, 64, 67, 69, 71, 74, 76, 79];
+const WAFU_PHRASE = [0, 2, 3, 4, 3, 2, 1, 2, 4, 5, 6, 5, 4, 3, 2, 0];
+const koto = (freq, seconds) =>
+  sweep(seconds, () => freq, (p) => 0.6 * triangle(p) + 0.3 * sine(2 * p) + 0.1 * sine(3 * p), (t) => 0.22 * Math.min(1, t * 800) * Math.exp(-t * 7));
+const taiko = (vol) => mix(
+  sweep(0.4, (t) => 60 + 50 * Math.exp(-t * 20), sine, (t) => vol * Math.exp(-t * 8)),
+  sweep(0.05, () => 180, triangle, (t) => vol * 0.4 * Math.exp(-t * 60)),
+);
+const bgmWafu = loop(120, 8, ({ buf, bar, t0, beat }) => {
+  for (const at of [0, 1.5, 2, 3]) place(buf, t0 + at * beat, taiko(at === 0 ? 0.9 : 0.6));
+  for (const at of [0.5, 1, 2.5, 3.5]) place(buf, t0 + at * beat, hat(0.1, 120));
+  for (let i = 0; i < 8; i++) {
+    const n = YO[WAFU_PHRASE[(bar * 8 + i) % WAFU_PHRASE.length]];
+    place(buf, t0 + i * beat * 0.5, koto(hz(n), beat * 0.9));
+  }
+  place(buf, t0, tone(hz(50), beat * 3.5, sine, 0.25, 0.8));
+});
+
+// 70bpm 静かなピアノ: ドラムなし。休憩や、集中したいときに
+const piano = (freq, seconds, vol) =>
+  sweep(seconds, () => freq, (p) => 0.7 * sine(p) + 0.2 * sine(2 * p) + 0.1 * sine(4 * p), (t) => vol * Math.min(1, t * 500) * Math.exp(-t * 1.6));
+const bgmPiano = loop(70, 8, ({ buf, bar, t0, beat, chord }) => {
+  place(buf, t0, piano(hz(chord.root), beat * 4, 0.3));
+  const arp = [chord.tones[0] - 12, chord.tones[1] - 12, chord.tones[2] - 12, chord.tones[1]];
+  for (let i = 0; i < 8; i++) place(buf, t0 + i * beat * 0.5, piano(hz(arp[i % arp.length]), beat * 1.8, 0.12));
+  if (bar % 2 === 1) place(buf, t0 + beat * 2, piano(hz(chord.tones[2]), beat * 2, 0.14));
+});
+
+// 174bpm ドラムンベース: 速いブレイクビーツと、うなる低音
+const bgmDnb = loop(174, 8, ({ buf, t0, beat, chord }) => {
+  for (const at of [0, 2.5]) place(buf, t0 + at * beat, kick(0.9));
+  for (const at of [1, 3]) place(buf, t0 + at * beat, snare(0.4, 16));
+  for (let i = 0; i < 16; i++) place(buf, t0 + (i * beat) / 4, hat(i % 2 ? 0.06 : 0.12, 90));
+  place(buf, t0, tone(hz(chord.root - 12), beat * 1.8, (p) => 0.5 * saw(p) + 0.5 * saw(p * 1.01), 0.28, 1.2));
+  place(buf, t0 + beat * 2, tone(hz(chord.root - 12), beat * 1.8, (p) => 0.5 * saw(p) + 0.5 * saw(p * 1.01), 0.28, 1.2));
+  for (const n of chord.tones) place(buf, t0, tone(hz(n), beat * 3.8, (p) => 0.6 * sine(p) + 0.4 * triangle(p), 0.05, 0.6));
+});
+
+for (const [name, samples] of Object.entries({
+  bgm_jazz: bgmJazz,
+  bgm_wafu: bgmWafu,
+  bgm_piano: bgmPiano,
+  bgm_dnb: bgmDnb,
+})) {
+  writeFileSync(join(outDir, `${name}.wav`), toWav(samples));
+  console.log(`wrote public/sounds/${name}.wav`);
+}

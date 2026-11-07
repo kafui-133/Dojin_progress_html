@@ -4,7 +4,7 @@ import { CalendarDays, Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { now as clockNow } from "@/lib/clock";
 import { soundManager } from "@/lib/soundManager";
-import { STAGES, getBoardStats, isPageComplete } from "@/lib/stages";
+import { getBoardStats, isPageComplete, stagesFor } from "@/lib/stages";
 import { cn } from "@/lib/utils";
 import { toDateString, useActiveProject, useAppStore } from "@/store/useAppStore";
 import type { StageId } from "@/types";
@@ -22,12 +22,13 @@ function dateToMs(date: string): number {
 }
 
 /**
- * ページ × 工程（コマ割り・セリフ入れ・下書き・ペン入れ・仕上げ）のボタン表。
+ * ページ × 工程（マンガはコマ割り〜仕上げ、イラスト本は下書き〜仕上げ）のボタン表。
  * 押すとその日付で完了を記録し、演出が出る。完了済みを押すと取り消せる。
  * 「日付を指定して記録」にすると、過去の分を選んだ日付で記録・日付を直せる（EXP や演出は出さない）。
  */
 export default function ManuscriptBoard() {
-  const { manuscript } = useActiveProject();
+  const { manuscript, type } = useActiveProject();
+  const stages = stagesFor(type);
   const completeStage = useAppStore((s) => s.completeStage);
   const undoStage = useAppStore((s) => s.undoStage);
   const setStageDate = useAppStore((s) => s.setStageDate);
@@ -37,8 +38,8 @@ export default function ManuscriptBoard() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const currentRowRef = useRef<HTMLTableRowElement>(null);
 
-  const board = getBoardStats(manuscript);
-  const currentPage = manuscript.pages.findIndex((page) => !isPageComplete(page));
+  const board = getBoardStats(manuscript, stages);
+  const currentPage = manuscript.pages.findIndex((page) => !isPageComplete(page, stages));
 
   // 作業中のページが見えるようにスクロールしておく
   useEffect(() => {
@@ -48,7 +49,7 @@ export default function ManuscriptBoard() {
   }, [currentPage]);
 
   const onCell = (page: number, stage: StageId, doneAt: number | undefined) => {
-    const label = STAGES.find((s) => s.id === stage)?.label;
+    const label = stages.find((s) => s.id === stage)?.label;
     // 今日の分は、日付を指定していても普通に記録する（演出・EXP あり）
     const date = pickMode ? pickDate : today;
     if (doneAt === undefined) {
@@ -108,7 +109,7 @@ export default function ManuscriptBoard() {
           <thead className="sticky top-0 z-10 bg-zinc-900">
             <tr>
               <th className="w-10 py-1.5 text-zinc-500">P</th>
-              {STAGES.map((stage) => (
+              {stages.map((stage) => (
                 <th key={stage.id} className="py-1.5 font-bold text-zinc-200">
                   <Icon name={stage.icon} className="mx-auto block size-6" />
                   <span className="inline-flex items-center gap-1">
@@ -125,7 +126,7 @@ export default function ManuscriptBoard() {
           </thead>
           <tbody>
             {manuscript.pages.map((page, i) => {
-              const complete = isPageComplete(page);
+              const complete = isPageComplete(page, stages);
               const isCurrent = i === currentPage;
               return (
                 <tr
@@ -136,7 +137,7 @@ export default function ManuscriptBoard() {
                   <td className={cn("text-center font-black tabular-nums", complete ? "text-emerald-400" : "text-zinc-400")}>
                     {complete ? <Check className="mx-auto size-4" aria-label={`P${i + 1} 完成`} /> : i + 1}
                   </td>
-                  {STAGES.map((stage) => {
+                  {stages.map((stage) => {
                     const doneAt = page.done[stage.id];
                     const done = doneAt !== undefined;
                     return (

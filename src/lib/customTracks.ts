@@ -4,7 +4,7 @@ import { DEFAULT_BGM_FEVER, DEFAULT_BGM_NORMAL, soundManager } from "@/lib/sound
 import { useAppStore } from "@/store/useAppStore";
 
 /**
- * 自分で追加した BGM（Suno で作った曲など）。
+ * 自分で追加した BGM（手元の mp3 など）。
  * 音声ファイルはブラウザの IndexedDB に保存するので、次に開いたときも使える。
  */
 
