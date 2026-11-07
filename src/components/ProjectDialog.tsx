@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { Check, Download, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -177,6 +177,13 @@ export default function ProjectDialog({ onClose }: { onClose: () => void }) {
   const renameProject = useAppStore((s) => s.renameProject);
   const deleteProject = useAppStore((s) => s.deleteProject);
   const [creating, setCreating] = useState(false);
+  /** 名前を変えているプロジェクト（デスクトップ版では prompt() が使えないので、その場で入力する） */
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+
+  const finishRename = () => {
+    if (renaming) renameProject(renaming.id, renaming.name);
+    setRenaming(null);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -216,6 +223,46 @@ export default function ProjectDialog({ onClose }: { onClose: () => void }) {
                   active ? "border-fuchsia-500/60 bg-fuchsia-500/10" : "border-zinc-600 bg-zinc-800/40",
                 )}
               >
+                {renaming?.id === project.id ? (
+                  <form
+                    className="flex min-w-0 flex-1 items-center gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      finishRename();
+                    }}
+                  >
+                    <input
+                      autoFocus
+                      value={renaming.name}
+                      onChange={(e) => setRenaming({ id: project.id, name: e.target.value })}
+                      onKeyDown={(e) => {
+                        // Esc は名前の変更だけをやめる（画面は閉じない）
+                        if (e.key === "Escape") {
+                          e.stopPropagation();
+                          setRenaming(null);
+                        }
+                      }}
+                      maxLength={60}
+                      aria-label="新しい名前"
+                      className="min-w-0 flex-1 rounded bg-zinc-900 px-2 py-1 font-bold ring-1 ring-zinc-600"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!renaming.name.trim()}
+                      className="flex shrink-0 items-center gap-1 rounded bg-fuchsia-600 px-2 py-1 text-xs font-bold text-white hover:bg-fuchsia-500 disabled:opacity-50"
+                    >
+                      <Check className="size-4" /> 保存
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRenaming(null)}
+                      aria-label="名前の変更をやめる"
+                      className="shrink-0 rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </form>
+                ) : (
                 <button
                   type="button"
                   onClick={() => switchProject(project.id)}
@@ -234,13 +281,11 @@ export default function ProjectDialog({ onClose }: { onClose: () => void }) {
                     {project.deadline && `・締め切り ${project.deadline}`}
                   </span>
                 </button>
+                )}
                 <button
                   type="button"
                   aria-label={`${project.name} の名前を変える`}
-                  onClick={() => {
-                    const name = prompt("新しい名前", project.name);
-                    if (name) renameProject(project.id, name);
-                  }}
+                  onClick={() => setRenaming({ id: project.id, name: project.name })}
                   className="rounded p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50"
                 >
                   <Pencil className="size-4" />
