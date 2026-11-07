@@ -361,6 +361,7 @@ const initialSettings: AppSettings = {
   isBridgeEnabled: IS_DESKTOP,
   isStrokeSoundOn: true,
   seVolume: 0.5,
+  seSetId: "standard",
   voiceVolume: 0.5,
   bgmVolume: 0.5,
   bgmNormalId: DEFAULT_BGM_NORMAL,

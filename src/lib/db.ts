@@ -1,11 +1,12 @@
-/** ブラウザ内の保存領域（IndexedDB）。自分の曲と、生成した声の音声を保存する */
+/** ブラウザ内の保存領域（IndexedDB）。自分の曲・自分の効果音と、生成した声の音声を保存する */
 
 const DB_NAME = "syuraba-booster";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const STORES = {
   bgmTracks: "bgm-tracks",
   voiceCache: "voice-cache",
+  seCustom: "se-custom",
 } as const;
 
 type StoreName = (typeof STORES)[keyof typeof STORES];
@@ -20,6 +21,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORES.voiceCache)) {
         db.createObjectStore(STORES.voiceCache);
+      }
+      if (!db.objectStoreNames.contains(STORES.seCustom)) {
+        db.createObjectStore(STORES.seCustom, { keyPath: "id" });
       }
     };
     request.onsuccess = () => resolve(request.result);

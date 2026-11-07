@@ -2,7 +2,39 @@ import { Howl, Howler } from "howler";
 
 export type SoundEffect = "click" | "feverImpact" | "fanfare" | "stroke" | "undo";
 
-// 先頭から順に試し、読み込めなければ次の候補を使う
+export const SOUND_EFFECTS: { id: SoundEffect; label: string }[] = [
+  { id: "click", label: "ボタン・お知らせ" },
+  { id: "stroke", label: "線を引いたとき（音階が上がる）" },
+  { id: "undo", label: "やり直し（Ctrl+Z）" },
+  { id: "feverImpact", label: "フィーバー・ZONE 突入" },
+  { id: "fanfare", label: "ファンファーレ（完成など）" },
+];
+
+export interface SeSet {
+  id: string;
+  label: string;
+  description: string;
+}
+
+/** 内蔵の効果音セット（scripts/generate-sounds.mjs で合成） */
+export const SE_SETS: SeSet[] = [
+  { id: "standard", label: "標準", description: "ピコッと軽い電子音" },
+  { id: "manga", label: "マンガ", description: "紙を叩く・ペンでこする・太鼓" },
+  { id: "retro", label: "レトロゲーム", description: "8bit の矩形波" },
+  { id: "soft", label: "やさしい", description: "木琴・鈴の丸い音" },
+];
+
+export const DEFAULT_SE_SET = "standard";
+
+const SE_FILE_NAMES: Record<SoundEffect, string> = {
+  click: "click",
+  feverImpact: "fever_impact",
+  fanfare: "fanfare",
+  stroke: "stroke",
+  undo: "undo",
+};
+
+// 先頭から順に試し、読み込めなければ次の候補を使う（標準のセット）
 const SE_SOURCES: Record<SoundEffect, string[]> = {
   click: ["/sounds/se_click.wav"],
   feverImpact: ["/sounds/se_fever_impact.wav"],
@@ -98,6 +130,9 @@ class SoundManager {
   private ducked = false;
   /** 設定画面の音量（0〜1） */
   private seLevel = 0.5;
+  private seSet = DEFAULT_SE_SET;
+  /** 自分で選んだ効果音（セットの音より優先する） */
+  private customSe = new Map<SoundEffect, { url: string; format: string }>();
   private bgmLevel = 0.5;
 
   private load(
@@ -123,9 +158,18 @@ class SoundManager {
     return howl;
   }
 
+  /** 自分の音 → 選んだセット → 標準 の順に試す */
+  private seSources(name: SoundEffect): { sources: string[]; format?: string } {
+    const custom = this.customSe.get(name);
+    if (custom) return { sources: [custom.url, ...SE_SOURCES[name]], format: custom.format };
+    if (this.seSet === DEFAULT_SE_SET) return { sources: SE_SOURCES[name] };
+    return { sources: [`/sounds/se_${this.seSet}_${SE_FILE_NAMES[name]}.wav`, ...SE_SOURCES[name]] };
+  }
+
   private getSe(name: SoundEffect): Howl | null {
     if (!this.se.has(name)) {
-      const howl = this.load(SE_SOURCES[name], { volume: this.seVolume() }, () => this.se.delete(name));
+      const { sources, format } = this.seSources(name);
+      const howl = this.load(sources, { volume: this.seVolume(), format }, () => this.se.delete(name));
       if (!howl) return null;
       this.se.set(name, howl);
     }
@@ -262,6 +306,34 @@ class SoundManager {
     this.ducked = on;
     const howl = this.currentBgm ? this.bgm.get(this.currentBgm) : undefined;
     if (howl?.playing()) howl.fade(howl.volume(), this.targetVolume(), 250);
+  }
+
+  /** 効果音のセットを切り替える（次に鳴らすときから） */
+  setSeSet(id: string): void {
+    const next = SE_SETS.some((set) => set.id === id) ? id : DEFAULT_SE_SET;
+    if (next === this.seSet) return;
+    this.seSet = next;
+    this.forgetSe(SOUND_EFFECTS.map((e) => e.id).filter((name) => !this.customSe.has(name)));
+  }
+
+  /** 自分で選んだ効果音を使う（null でセットの音に戻す） */
+  setCustomSe(name: SoundEffect, source: { url: string; format: string } | null): void {
+    if (source) this.customSe.set(name, source);
+    else this.customSe.delete(name);
+    this.forgetSe([name]);
+  }
+
+  private forgetSe(names: SoundEffect[]): void {
+    for (const name of names) {
+      this.se.get(name)?.unload();
+      this.se.delete(name);
+    }
+  }
+
+  /** 設定画面の試し鳴らし */
+  previewSe(name: SoundEffect): void {
+    if (name === "stroke") this.playStroke(5);
+    else this.play(name);
   }
 
   /** 設定画面の音量（0〜1）。鳴っている BGM もすぐ合わせる */

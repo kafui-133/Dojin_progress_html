@@ -155,6 +155,7 @@ export interface AppSettings {
   isBridgeEnabled: boolean; // クリスタ連携ブリッジに接続するか
   isStrokeSoundOn: boolean; // 線・やり直しの効果音
   seVolume: number;         // 効果音の音量（0〜1）
+  seSetId: string;          // 効果音のセット（standard / manga / retro / soft）
   voiceVolume: number;      // 読み上げの音量（0〜1）
   bgmVolume: number;        // BGM の音量（0〜1）
   bgmNormalId: string;      // 作業中の BGM
