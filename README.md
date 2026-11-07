@@ -13,6 +13,7 @@
 
 **[最新版をダウンロード](https://github.com/kafui-133/Dojin_progress_html/releases/tag/desktop-latest)** して、exe を実行するだけで使えます。
 使い方は [DISTRIBUTION.md](./DISTRIBUTION.md) を見てください。
+安全性・プライバシー（読み取るもの・外に送らないこと・配布ファイルの確かめ方）は [SAFETY.md](./SAFETY.md) にまとめています。
 
 ## 開発する人へ
 

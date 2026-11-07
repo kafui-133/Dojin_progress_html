@@ -3,6 +3,7 @@
 # - v1.0.0 のようなタグを付けたら、その版のリリースを作る
 # - Actions の画面から手動でも実行できる
 # - 読み上げ音声（voice-pack/audio）も zip にして一緒に置く
+# - ファイルの指紋（SHA-256）と、GitHub のビルドの証明（Artifact Attestation）を付ける
 name: Desktop app (Windows)
 
 on:
@@ -25,10 +26,14 @@ on:
       - ".github/release-notes.md"
       - "voice-pack/audio/**"
       - "voice-pack/CREDITS.md"
+      - "SAFETY.md"
   workflow_dispatch:
 
 permissions:
   contents: write
+  # ビルドの証明（attest-build-provenance）に使う
+  id-token: write
+  attestations: write
 
 concurrency:
   group: desktop-${{ github.ref }}
@@ -60,12 +65,28 @@ jobs:
           Copy-Item voice-pack/CREDITS.md "$dir/"
           Compress-Archive -Path $dir -DestinationPath release/SyurabaBooster-voices.zip -Force
 
+      # 配っているファイルがこのビルドのものか、誰でも確かめられるようにする（SAFETY.md の 5）
+      - name: Checksums (SHA-256)
+        shell: bash
+        run: |
+          cd release
+          sha256sum *.exe SyurabaBooster-voices.zip | sed 's/ \*/  /' > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            release/*.exe
+            release/SyurabaBooster-voices.zip
+
       - uses: actions/upload-artifact@v4
         with:
           name: SyurabaBooster-windows
           path: |
             release/*.exe
             release/SyurabaBooster-voices.zip
+            release/SHA256SUMS.txt
           if-no-files-found: error
 
       - name: Publish "desktop-latest"
@@ -76,7 +97,17 @@ jobs:
         run: |
           sed -i "s/__SHA__/$GITHUB_SHA/" .github/release-notes.md
           gh release delete desktop-latest --yes --cleanup-tag || true
-          gh release create desktop-latest release/*.exe release/SyurabaBooster-voices.zip \
+          {
+            echo
+            echo "## ファイルの指紋（SHA-256）"
+            echo
+            echo '```'
+            cat release/SHA256SUMS.txt
+            echo '```'
+            echo
+            echo "ビルドの記録: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } >> .github/release-notes.md
+          gh release create desktop-latest release/*.exe release/SyurabaBooster-voices.zip release/SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "進捗ブースター 最新版（Windows）" \
@@ -89,6 +120,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           sed -i "s/__SHA__/$GITHUB_SHA/" .github/release-notes.md
-          gh release create "$GITHUB_REF_NAME" release/*.exe release/SyurabaBooster-voices.zip \
+          {
+            echo
+            echo "## ファイルの指紋（SHA-256）"
+            echo
+            echo '```'
+            cat release/SHA256SUMS.txt
+            echo '```'
+            echo
+            echo "ビルドの記録: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } >> .github/release-notes.md
+          gh release create "$GITHUB_REF_NAME" release/*.exe release/SyurabaBooster-voices.zip release/SHA256SUMS.txt \
             --title "進捗ブースター $GITHUB_REF_NAME（Windows）" \
             --notes-file .github/release-notes.md

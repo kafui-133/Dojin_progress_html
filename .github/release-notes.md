@@ -20,4 +20,6 @@
 
 Voice: Fish Audio Drama 3 (drama3-small) / **Built with Fish Audio**
 
+安全性・プライバシー（読み取るもの・外に送らないこと・ファイルの確かめ方）は [SAFETY.md](https://github.com/kafui-133/Dojin_progress_html/blob/__SHA__/SAFETY.md) を見てください。
+
 使い方は [配布版の説明（DISTRIBUTION.md）](https://github.com/kafui-133/Dojin_progress_html/blob/__SHA__/DISTRIBUTION.md) を見てください。
