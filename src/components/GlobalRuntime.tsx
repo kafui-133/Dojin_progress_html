@@ -51,7 +51,7 @@ function PomodoroController() {
       const event = useAppStore.getState().tickPomodoro(clockNow());
       if (!event) return;
       const settings = useAppStore.getState();
-      // 読み上げを OFF にしていても、休憩の合図だけは女性の声で伝える
+      // 読み上げを OFF にしていても、休憩の合図だけは1人目の声で伝える
       const options = voiceOptions(settings);
       if (options.mode === "off") options.mode = "female";
       speak(event === "focus-done" ? LINES.restStart : LINES.restEnd, options);

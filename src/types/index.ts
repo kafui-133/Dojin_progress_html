@@ -147,7 +147,8 @@ export interface UndoResult {
   milestone: boolean;       // 区切りの回数（25回ごと）に達した
 }
 
-export type VoiceModeSetting = "off" | "female" | "male" | "alternate";
+/** 読み上げ: OFF / 1人目 / 2人目 / 3人目 / シャッフル（保存の値は以前の female・male・alternate のまま） */
+export type VoiceModeSetting = "off" | "female" | "male" | "third" | "alternate";
 
 /** 保存する設定 */
 export interface AppSettings {
@@ -161,13 +162,16 @@ export interface AppSettings {
   bgmNormalId: string;      // 作業中の BGM
   bgmFeverId: string;       // フィーバー・ゾーン中の BGM
   voiceMode: VoiceModeSetting; // カットインの読み上げ
-  femaleVoiceUri: string;   // 女性の声（空なら自動）
-  maleVoiceUri: string;     // 男性の声（空なら自動）
+  femaleVoiceUri: string;   // 1人目の声（空なら自動）
+  maleVoiceUri: string;     // 2人目の声（空なら自動）
+  thirdVoiceUri: string;    // 3人目の声（空なら自動）
   ttsEngine: TtsEngine;     // 読み上げに使う声
-  geminiFemaleCharacter: string;   // Gemini の女性キャラクター
-  geminiMaleCharacter: string;     // Gemini の男性キャラクター
-  voicePackFemale: string;         // 自作の音声で「女性」側に使う声の ID（cute1 など）
-  voicePackMale: string;           // 自作の音声で「男性」側に使う声の ID（shibui1 など）
+  geminiFemaleCharacter: string;   // Gemini の1人目のキャラクター
+  geminiMaleCharacter: string;     // Gemini の2人目のキャラクター
+  geminiThirdCharacter: string;    // Gemini の3人目のキャラクター
+  voicePackFemale: string;         // 自作の音声で1人目に使う声の ID（cute1 など）
+  voicePackMale: string;           // 自作の音声で2人目に使う声の ID（shibui1 など）
+  voicePackThird: string;          // 自作の音声で3人目に使う声の ID（onee1 など）
   restBgmId: string;               // 休憩中に流すゆったりした BGM
   zoneDailyLimit: number;          // 1日に ZONE に入れる回数（修羅場モードでは無制限）
   shurabaMode: boolean;            // 修羅場モード（ZONE の上限なし）
@@ -175,7 +179,8 @@ export interface AppSettings {
   pomodoroBreakMin: number;        // ポモドーロの休憩時間（分）
 }
 
-export type ProjectType = "manga" | "illustration";
+/** マンガ / イラスト（1枚絵） / イラスト本（ページはあるが、コマ割り・セリフ入れは無し） */
+export type ProjectType = "manga" | "illustration" | "illustbook";
 
 /** 原稿・イラストなど、作品ごとの記録 */
 export interface Project {
@@ -183,10 +188,10 @@ export interface Project {
   name: string;
   type: ProjectType;
   createdAt: number;
-  /** 漫画: 総ページ数・入稿締め切り（イラストでは締め切りのみ任意） */
+  /** マンガ・イラスト本: 総ページ数・入稿締め切り（イラストでは締め切りのみ任意） */
   targetPages: number;
   deadline: string;
-  /** 漫画: ページ × 工程の記録（イラストでは空） */
+  /** マンガ・イラスト本: ページ × 工程の記録（イラストでは空） */
   manuscript: Manuscript;
   /** 日ごとの記録（YYYY-MM-DD → 記録） */
   dailyStats: Record<string, DailyStats>;

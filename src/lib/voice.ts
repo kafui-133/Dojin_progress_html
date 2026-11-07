@@ -1,7 +1,7 @@
 import { Howl } from "howler";
 import { useSyncExternalStore } from "react";
 import { GEMINI_ENABLED } from "@/lib/edition";
-import { geminiSource, getCharacter } from "@/lib/geminiTts";
+import { findCharacter, geminiSource, getCharacter } from "@/lib/geminiTts";
 import { soundManager } from "@/lib/soundManager";
 import { type VoiceSource, generateShared, getCachedVoice } from "@/lib/ttsCache";
 import { toReading } from "@/lib/voiceLines";
@@ -17,23 +17,38 @@ import type { AppSettings } from "@/types";
  * - 自作の音声: 読み込んだ音声ファイルを鳴らす（無いセリフはブラウザ標準の声）。
  */
 
-export type VoiceMode = "off" | "female" | "male" | "alternate";
+export type VoiceMode = "off" | "female" | "male" | "third" | "alternate";
 export type VoiceGender = "female" | "male";
+/** 読み上げる人（保存の値は以前の名前のまま。female = 1人目、male = 2人目） */
+export type VoiceSlot = "female" | "male" | "third";
+
+export const VOICE_SLOTS: VoiceSlot[] = ["female", "male", "third"];
+
+export const VOICE_SLOT_LABEL: Record<VoiceSlot, string> = {
+  female: "1人目",
+  male: "2人目",
+  third: "3人目",
+};
 
 export const VOICE_MODE_LABEL: Record<VoiceMode, string> = {
   off: "OFF",
-  female: "女性",
-  male: "渋い男性",
-  alternate: "交互",
+  female: "1人目",
+  male: "2人目",
+  third: "3人目",
+  alternate: "シャッフル",
 };
+
+/** ブラウザ標準の声を自動で選ぶときの性別 */
+export const SLOT_GENDER: Record<VoiceSlot, VoiceGender> = { female: "female", male: "male", third: "female" };
 
 const FEMALE_NAMES = /nanami|aoi|mayu|shiori|haruka|ayumi|sayaka|google 日本語|kyoko|o-ren/i;
 const MALE_NAMES = /keita|daichi|naoki|ichiro|otoya|hattori/i;
 
-/** 声ごとの調子。男性は低めでゆっくり＝渋く、女性は少し高めで元気に */
-const STYLE: Record<VoiceGender, { pitch: number; rate: number }> = {
+/** ブラウザ標準の声の調子。1人目は少し高めで元気に、2人目は低めでゆっくり＝渋く、3人目はそのまま */
+const STYLE: Record<VoiceSlot, { pitch: number; rate: number }> = {
   female: { pitch: 1.15, rate: 1.1 },
   male: { pitch: 0.6, rate: 0.95 },
+  third: { pitch: 1, rate: 1 },
 };
 
 export { toReading } from "@/lib/voiceLines";
@@ -89,17 +104,18 @@ export function pickVoice(gender: VoiceGender, preferredUri = ""): SpeechSynthes
 
 // ---- 読み上げ ----
 
-let alternateNext: VoiceGender = "female";
+/** シャッフルで、同じ人が続かないようにする */
+let lastShuffled: VoiceSlot | null = null;
 let current: SpeechSynthesisUtterance | null = null;
 /** 新しい読み上げが始まったら、それより前の（非同期の）読み上げは取りやめる */
 let speakToken = 0;
 
 export interface SpeakOptions {
   mode: VoiceMode;
-  femaleVoiceUri?: string;
-  maleVoiceUri?: string;
+  /** ブラウザ標準の声（空なら自動） */
+  voiceUris?: Partial<Record<VoiceSlot, string>>;
   /** 外部の声（Gemini・自作の音声）。null ならブラウザ標準の声 */
-  sources?: Record<VoiceGender, VoiceSource | null>;
+  sources?: Record<VoiceSlot, VoiceSource | null>;
   volume?: number;
 }
 
@@ -154,21 +170,22 @@ export function speak(text: string, options: SpeakOptions): void {
   const { mode, volume = 1 } = options;
   if (mode === "off") return;
 
-  let gender: VoiceGender;
+  let slot: VoiceSlot;
   if (mode === "alternate") {
-    gender = alternateNext;
-    alternateNext = gender === "female" ? "male" : "female";
+    const candidates = VOICE_SLOTS.filter((s) => s !== lastShuffled);
+    slot = candidates[Math.floor(Math.random() * candidates.length)];
+    lastShuffled = slot;
   } else {
-    gender = mode;
+    slot = mode;
   }
 
   const reading = toReading(text);
   const token = ++speakToken;
   stopAll();
 
-  const source = options.sources?.[gender] ?? null;
+  const source = options.sources?.[slot] ?? null;
   if (!source) {
-    speakWithBrowser(reading, gender, options);
+    speakWithBrowser(reading, slot, options);
     return;
   }
 
@@ -182,19 +199,19 @@ export function speak(text: string, options: SpeakOptions): void {
     const job = generateShared(source, reading);
     job.catch(() => {});
     // 間に合わない・作れないときはブラウザの声で読む（作れたものは次回から使われる）
-    speakWithBrowser(reading, gender, options);
+    speakWithBrowser(reading, slot, options);
   })();
 }
 
-function speakWithBrowser(reading: string, gender: VoiceGender, options: SpeakOptions): void {
+function speakWithBrowser(reading: string, slot: VoiceSlot, options: SpeakOptions): void {
   if (!isSupported()) return;
-  const { femaleVoiceUri, maleVoiceUri, volume = 1 } = options;
-  const voice = pickVoice(gender, gender === "female" ? femaleVoiceUri : maleVoiceUri);
+  const { volume = 1 } = options;
+  const voice = pickVoice(SLOT_GENDER[slot], options.voiceUris?.[slot]);
   const utterance = new SpeechSynthesisUtterance(reading);
   utterance.lang = "ja-JP";
   if (voice) utterance.voice = voice;
-  utterance.pitch = STYLE[gender].pitch;
-  utterance.rate = STYLE[gender].rate;
+  utterance.pitch = STYLE[slot].pitch;
+  utterance.rate = STYLE[slot].rate;
   utterance.volume = volume * VOICE_MAX_VOLUME;
 
   current = utterance;
@@ -210,27 +227,31 @@ function speakWithBrowser(reading: string, gender: VoiceGender, options: SpeakOp
   speechSynthesis.speak(utterance);
 }
 
-/** 設定に合わせた、男女それぞれの外部の声（ブラウザ標準なら null） */
-export function voiceSources(settings: AppSettings): Record<VoiceGender, VoiceSource | null> {
+/** 設定に合わせた、1〜3人目それぞれの外部の声（ブラウザ標準なら null） */
+export function voiceSources(settings: AppSettings): Record<VoiceSlot, VoiceSource | null> {
   // 配布版では Gemini を使わない（読み込んだデータが Gemini のままでもブラウザ標準の声で読む）
   if (settings.ttsEngine === "gemini" && GEMINI_ENABLED) {
     return {
       female: geminiSource(getCharacter(settings.geminiFemaleCharacter, "female")),
       male: geminiSource(getCharacter(settings.geminiMaleCharacter, "male")),
+      third: geminiSource(findCharacter(settings.geminiThirdCharacter, "female")),
     };
   }
   if (settings.ttsEngine === "pack") {
-    return { female: voicePackSource(settings.voicePackFemale), male: voicePackSource(settings.voicePackMale) };
+    return {
+      female: voicePackSource(settings.voicePackFemale),
+      male: voicePackSource(settings.voicePackMale),
+      third: voicePackSource(settings.voicePackThird),
+    };
   }
-  return { female: null, male: null };
+  return { female: null, male: null, third: null };
 }
 
 /** 保存されている設定から読み上げのオプションを作る */
 export function voiceOptions(settings: AppSettings): SpeakOptions {
   return {
     mode: settings.voiceMode,
-    femaleVoiceUri: settings.femaleVoiceUri,
-    maleVoiceUri: settings.maleVoiceUri,
+    voiceUris: { female: settings.femaleVoiceUri, male: settings.maleVoiceUri, third: settings.thirdVoiceUri },
     sources: voiceSources(settings),
     volume: settings.voiceVolume,
   };

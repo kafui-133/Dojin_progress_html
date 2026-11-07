@@ -78,6 +78,11 @@ export function getCharacter(id: string, gender: CharacterGender): VoiceCharacte
   );
 }
 
+/** 男女を問わず id で探す（3人目用）。見つからなければ fallback の性別の既定 */
+export function findCharacter(id: string, fallback: CharacterGender): VoiceCharacter {
+  return VOICE_CHARACTERS.find((c) => c.id === id) ?? getCharacter(id, fallback);
+}
+
 // ---- API キー ----
 
 export function loadApiKey(): string {

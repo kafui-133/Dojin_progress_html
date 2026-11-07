@@ -13,7 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import { ActivityChart, COLORS, Card, ChartTooltip, LegendItem, type Period, StatTile, axisProps } from "@/components/stats/parts";
-import { STAGES, getBoardStats } from "@/lib/stages";
+import { getBoardStats, stagesFor } from "@/lib/stages";
 import {
   ACTIVITY_METRICS,
   buildBurnup,
@@ -27,19 +27,20 @@ import type { Project } from "@/types";
 import Icon from "@/components/Icon";
 
 
-/** マンガのプロジェクトの進捗グラフ（ページ × 工程・締め切りまでのペース） */
+/** マンガ・イラスト本のプロジェクトの進捗グラフ（ページ × 工程・締め切りまでのペース） */
 export default function MangaStats({ project, period, today }: { project: Project; period: Period; today: string }) {
   const { manuscript, dailyStats } = project;
+  const STAGES = stagesFor(project.type);
   const progress = useAppStore((s) => s.progress);
-  const board = getBoardStats(manuscript);
-  const burnup = buildBurnup(manuscript, project.deadline, today);
+  const board = getBoardStats(manuscript, STAGES);
+  const burnup = buildBurnup(manuscript, project.deadline, today, STAGES);
   const daysLeft = project.deadline ? daysBetween(today, project.deadline) : null;
   const remaining = board.total - board.done;
   const neededPace = daysLeft !== null && daysLeft >= 0 && remaining > 0 ? remaining / (daysLeft + 1) : null;
   const onTrack = burnup.forecast !== null && project.deadline ? burnup.forecast <= project.deadline : null;
 
   const days = periodDays(period, firstActiveDay(dailyStats, manuscript, today), today);
-  const byDay = completionsByDay(manuscript, days);
+  const byDay = completionsByDay(manuscript, days, STAGES);
   const todayStats = dailyStats[today] ?? EMPTY_DAY;
   const todayStages = byDay.at(-1);
   const todayStageCount = todayStages ? STAGES.reduce((sum, s) => sum + todayStages[s.id], 0) : 0;

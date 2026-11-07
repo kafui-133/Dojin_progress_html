@@ -5,7 +5,7 @@ import { now as clockNow } from "@/lib/clock";
 import { IS_DESKTOP } from "@/lib/edition";
 import { DEFAULT_FEMALE_CHARACTER, DEFAULT_MALE_CHARACTER } from "@/lib/geminiTts";
 import { DEFAULT_BGM_FEVER, DEFAULT_BGM_NORMAL } from "@/lib/soundManager";
-import { PAGE_COMPLETE_LINE, STAGE_BY_ID, getBoardStats, isPageComplete, resizePages } from "@/lib/stages";
+import { PAGE_COMPLETE_LINE, STAGE_BY_ID, getBoardStats, hasPages, isPageComplete, resizePages, stagesFor } from "@/lib/stages";
 import { LINES } from "@/lib/voiceLines";
 import { DEFAULT_PACK_FEMALE, DEFAULT_PACK_MALE } from "@/lib/voicePackManifest";
 import type {
@@ -330,16 +330,22 @@ function newId(): string {
     : `p-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+const DEFAULT_PROJECT_NAME: Record<ProjectType, string> = {
+  manga: "新しい原稿",
+  illustration: "新しいイラスト",
+  illustbook: "新しいイラスト本",
+};
+
 export function createProjectData(input: {
   name: string;
   type: ProjectType;
   targetPages?: number;
   deadline?: string;
 }): Project {
-  const pages = input.type === "manga" ? clampPages(input.targetPages ?? DEFAULT_TARGET_PAGES) : 0;
+  const pages = hasPages(input.type) ? clampPages(input.targetPages ?? DEFAULT_TARGET_PAGES) : 0;
   return {
     id: newId(),
-    name: input.name.trim() || (input.type === "manga" ? "新しい原稿" : "新しいイラスト"),
+    name: input.name.trim() || DEFAULT_PROJECT_NAME[input.type],
     type: input.type,
     createdAt: Date.now(),
     targetPages: pages,
@@ -369,11 +375,14 @@ const initialSettings: AppSettings = {
   voiceMode: "female",
   femaleVoiceUri: "",
   maleVoiceUri: "",
+  thirdVoiceUri: "",
   ttsEngine: "browser",
   geminiFemaleCharacter: DEFAULT_FEMALE_CHARACTER,
   geminiMaleCharacter: DEFAULT_MALE_CHARACTER,
+  geminiThirdCharacter: "oneesan",
   voicePackFemale: DEFAULT_PACK_FEMALE,
   voicePackMale: DEFAULT_PACK_MALE,
+  voicePackThird: "onee1",
   restBgmId: DEFAULT_REST_BGM,
   zoneDailyLimit: DEFAULT_ZONE_DAILY_LIMIT,
   shurabaMode: false,
@@ -613,21 +622,23 @@ export const useAppStore = create<AppState>()(
           const state = get();
           const project = getActiveProject(state);
           const page = project.manuscript.pages[pageIndex];
-          if (project.type !== "manga" || !page || page.done[stageId] !== undefined) return null;
+          const stages = stagesFor(project.type);
+          if (!hasPages(project.type) || !page || page.done[stageId] !== undefined) return null;
+          if (!stages.some((s) => s.id === stageId)) return null;
 
-          const before = getBoardStats(project.manuscript);
+          const before = getBoardStats(project.manuscript, stages);
           const pages = project.manuscript.pages.map((p, i) =>
             i === pageIndex ? { done: { ...p.done, [stageId]: now } } : p,
           );
           const manuscript: Manuscript = { pages, startedAt: project.manuscript.startedAt || now };
-          const after = getBoardStats(manuscript);
+          const after = getBoardStats(manuscript, stages);
           const stage = STAGE_BY_ID[stageId];
 
           return applyAction(now, {
             type: "stage",
             exp: stage.exp,
             cutIns: stage.cutIns,
-            stage: { page: pageIndex, stage: stageId, pageComplete: isPageComplete(pages[pageIndex]) },
+            stage: { page: pageIndex, stage: stageId, pageComplete: isPageComplete(pages[pageIndex], stages) },
             goalReached: before.done < before.total && after.done === after.total,
             projects: state.projects.map((p) => (p.id === project.id ? { ...p, manuscript } : p)),
           });
@@ -636,7 +647,7 @@ export const useAppStore = create<AppState>()(
         setStageDate: (pageIndex, stageId, at) =>
           set((state) => {
             const project = getActiveProject(state);
-            if (project.type !== "manga" || !project.manuscript.pages[pageIndex]) return {};
+            if (!hasPages(project.type) || !project.manuscript.pages[pageIndex]) return {};
             const pages = project.manuscript.pages.map((p, i) =>
               i === pageIndex ? { done: { ...p.done, [stageId]: at } } : p,
             );
@@ -831,7 +842,7 @@ export const useAppStore = create<AppState>()(
         setGoal: ({ targetPages, deadline }) =>
           set((state) => {
             const project = getActiveProject(state);
-            const pages = targetPages !== undefined && project.type === "manga" ? clampPages(targetPages) : undefined;
+            const pages = targetPages !== undefined && hasPages(project.type) ? clampPages(targetPages) : undefined;
             return {
               projects: state.projects.map((p) =>
                 p.id !== project.id

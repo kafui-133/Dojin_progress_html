@@ -8,9 +8,9 @@ import { useCustomTracks } from "@/lib/customTracks";
 import { GEMINI_ENABLED, IS_DESKTOP } from "@/lib/edition";
 import {
   API_KEY_PAGE,
-  type CharacterGender,
   GEMINI_PREPARE_INTERVAL_MS,
   VOICE_CHARACTERS,
+  findCharacter,
   geminiSource,
   getCharacter,
   loadApiKey,
@@ -19,9 +19,12 @@ import {
 import { BGM_PRESETS, SE_SETS, SOUND_EFFECTS, type SoundEffect, soundManager } from "@/lib/soundManager";
 import { cn } from "@/lib/utils";
 import {
+  SLOT_GENDER,
   VOICE_MODE_LABEL,
-  type VoiceGender,
+  VOICE_SLOTS,
+  VOICE_SLOT_LABEL,
   type VoiceMode,
+  type VoiceSlot,
   guessGender,
   previewSource,
   speak,
@@ -33,11 +36,25 @@ import { countVoicePack, downloadVoicePackManifest, importVoicePackFiles, voiceP
 import { VOICE_PACK_ROLES, VOICE_PACK_ROLE_INFO, VOICE_PACK_VOICES } from "@/lib/voicePackManifest";
 import { type PrepareProgress, TtsError, type VoiceSource, countCachedVoices, prepareVoices } from "@/lib/ttsCache";
 import { useAppStore } from "@/store/useAppStore";
+import type { AppSettings } from "@/types";
 
-const VOICE_SAMPLES: Record<VoiceGender, string> = {
+const VOICE_SAMPLES: Record<VoiceSlot, string> = {
   female: "神作画！",
   male: "修羅場突破！",
+  third: "原稿が進んだ！",
 };
+
+/** 1〜3人目それぞれの設定項目 */
+const SLOT_KEYS = {
+  female: { uri: "femaleVoiceUri", gemini: "geminiFemaleCharacter", pack: "voicePackFemale" },
+  male: { uri: "maleVoiceUri", gemini: "geminiMaleCharacter", pack: "voicePackMale" },
+  third: { uri: "thirdVoiceUri", gemini: "geminiThirdCharacter", pack: "voicePackThird" },
+} as const satisfies Record<VoiceSlot, Record<string, keyof AppSettings>>;
+
+/** Gemini のキャラクター（1・2人目は今までどおり男女で分け、3人目はどちらでも） */
+function slotCharacter(slot: VoiceSlot, id: string) {
+  return slot === "third" ? findCharacter(id, "female") : getCharacter(id, slot);
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -258,7 +275,7 @@ function CustomTrackList() {
   return (
     <div className="flex flex-col gap-2 rounded-lg bg-zinc-800/60 p-3 text-sm">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-zinc-300">自分の曲（Suno で作った mp3 など）</span>
+        <span className="text-zinc-300">自分の曲（mp3 など）</span>
         <button
           type="button"
           disabled={busy}
@@ -310,11 +327,12 @@ function CustomTrackList() {
   );
 }
 
-function VoicePicker({ gender }: { gender: VoiceGender }) {
+function VoicePicker({ slot }: { slot: VoiceSlot }) {
   const voices = useJapaneseVoices();
-  const key = gender === "female" ? "femaleVoiceUri" : "maleVoiceUri";
+  const key = SLOT_KEYS[slot].uri;
   const value = useAppStore((s) => s[key]);
   const updateSettings = useAppStore((s) => s.updateSettings);
+  const gender = SLOT_GENDER[slot];
 
   // 性別が合う声を先に並べる
   const sorted = [...voices].sort(
@@ -323,13 +341,11 @@ function VoicePicker({ gender }: { gender: VoiceGender }) {
 
   return (
     <div className="flex flex-col gap-1 text-sm">
-      <span className="text-zinc-300">{gender === "female" ? "女性の声" : "渋い男性の声"}</span>
+      <span className="text-zinc-300">{VOICE_SLOT_LABEL[slot]}の声</span>
       <div className="flex gap-2">
         <select
           value={value}
-          onChange={(e) =>
-            updateSettings(gender === "female" ? { femaleVoiceUri: e.target.value } : { maleVoiceUri: e.target.value })
-          }
+          onChange={(e) => updateSettings({ [key]: e.target.value })}
           className="min-w-0 flex-1 rounded-lg bg-zinc-800 px-3 py-2"
         >
           <option value="">自動で選ぶ</option>
@@ -342,10 +358,9 @@ function VoicePicker({ gender }: { gender: VoiceGender }) {
         <button
           type="button"
           onClick={() =>
-            speak(VOICE_SAMPLES[gender], {
-              mode: gender,
-              femaleVoiceUri: useAppStore.getState().femaleVoiceUri,
-              maleVoiceUri: useAppStore.getState().maleVoiceUri,
+            speak(VOICE_SAMPLES[slot], {
+              mode: slot,
+              voiceUris: { [slot]: useAppStore.getState()[key] },
               volume: useAppStore.getState().voiceVolume,
             })
           }
@@ -494,23 +509,24 @@ function PreparePanel({ sources, intervalMs, note }: { sources: VoiceSource[]; i
   );
 }
 
-/** 読み上げモード（女性だけ・男性だけ・交互）で実際に使う側だけを返す */
-function usedGenders(voiceMode: VoiceMode): CharacterGender[] {
-  if (voiceMode === "alternate") return ["female", "male"];
-  if (voiceMode === "female" || voiceMode === "male") return [voiceMode];
-  return [];
+/** 読み上げモード（1〜3人目のだれか・シャッフル）で実際に使う人だけを返す */
+function usedSlots(voiceMode: VoiceMode): VoiceSlot[] {
+  if (voiceMode === "alternate") return VOICE_SLOTS;
+  if (voiceMode === "off") return [];
+  return [voiceMode];
 }
 
 function GeminiVoiceSettings() {
   const femaleId = useAppStore((s) => s.geminiFemaleCharacter);
   const maleId = useAppStore((s) => s.geminiMaleCharacter);
+  const thirdId = useAppStore((s) => s.geminiThirdCharacter);
   const voiceMode = useAppStore((s) => s.voiceMode);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const [keyInput, setKeyInput] = useState(() => loadApiKey());
   const [savedKey, setSavedKey] = useState(() => loadApiKey());
 
-  const selected: Record<CharacterGender, string> = { female: femaleId, male: maleId };
-  const sources = usedGenders(voiceMode).map((gender) => geminiSource(getCharacter(selected[gender], gender)));
+  const selected: Record<VoiceSlot, string> = { female: femaleId, male: maleId, third: thirdId };
+  const sources = usedSlots(voiceMode).map((slot) => geminiSource(slotCharacter(slot, selected[slot])));
 
   return (
     <div className="flex flex-col gap-3 rounded-lg bg-zinc-800/60 p-3 text-sm">
@@ -550,30 +566,24 @@ function GeminiVoiceSettings() {
 
       {savedKey && (
         <>
-          {(["female", "male"] as const).map((gender) => {
-            const character = getCharacter(selected[gender], gender);
+          {VOICE_SLOTS.map((slot) => {
+            const character = slotCharacter(slot, selected[slot]);
             return (
-              <div key={gender} className="flex flex-col gap-1 text-sm">
-                <span className="text-zinc-300">{gender === "female" ? "女性のキャラクター" : "男性のキャラクター"}</span>
+              <div key={slot} className="flex flex-col gap-1 text-sm">
+                <span className="text-zinc-300">{VOICE_SLOT_LABEL[slot]}のキャラクター</span>
                 <div className="flex flex-wrap gap-2">
                   <select
                     value={character.id}
-                    onChange={(e) =>
-                      updateSettings(
-                        gender === "female"
-                          ? { geminiFemaleCharacter: e.target.value }
-                          : { geminiMaleCharacter: e.target.value },
-                      )
-                    }
+                    onChange={(e) => updateSettings({ [SLOT_KEYS[slot].gemini]: e.target.value })}
                     className="min-w-0 flex-1 rounded-lg bg-zinc-800 px-3 py-2"
                   >
-                    {VOICE_CHARACTERS.filter((c) => c.gender === gender).map((c) => (
+                    {VOICE_CHARACTERS.filter((c) => slot === "third" || c.gender === slot).map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.label}（{c.voiceName}）
                       </option>
                     ))}
                   </select>
-                  <TestButton source={geminiSource(character)} sample={VOICE_SAMPLES[gender]} />
+                  <TestButton source={geminiSource(character)} sample={VOICE_SAMPLES[slot]} />
                 </div>
               </div>
             );
@@ -594,13 +604,14 @@ function VoicePackSettings() {
   const voiceMode = useAppStore((s) => s.voiceMode);
   const packFemale = useAppStore((s) => s.voicePackFemale);
   const packMale = useAppStore((s) => s.voicePackMale);
+  const packThird = useAppStore((s) => s.voicePackThird);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const [counts, setCounts] = useState<Awaited<ReturnType<typeof countVoicePack>> | null>(null);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [importing, setImporting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const selected: Record<CharacterGender, string> = { female: packFemale, male: packMale };
+  const selected: Record<VoiceSlot, string> = { female: packFemale, male: packMale, third: packThird };
   const loadedVoices = counts ? VOICE_PACK_VOICES.filter((voice) => counts.byVoice[voice.id] > 0) : [];
 
   useEffect(() => {
@@ -676,15 +687,13 @@ function VoicePackSettings() {
         中のファイルをすべて選んで（Ctrl + A）読み込んでください。同じファイルを読み込み直すと上書きします。
       </p>
       {message && <p className={cn("text-xs", message.tone === "ok" ? "text-emerald-300" : "text-red-400")}>{message.text}</p>}
-      {usedGenders(voiceMode).map((gender) => (
-        <div key={gender} className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-300">{gender === "female" ? "「女性」で使う声" : "「渋い男性」で使う声"}</span>
+      {usedSlots(voiceMode).map((slot) => (
+        <div key={slot} className="flex flex-col gap-1 text-sm">
+          <span className="text-zinc-300">「{VOICE_SLOT_LABEL[slot]}」で使う声</span>
           <div className="flex flex-wrap gap-2">
             <select
-              value={selected[gender]}
-              onChange={(e) =>
-                updateSettings(gender === "female" ? { voicePackFemale: e.target.value } : { voicePackMale: e.target.value })
-              }
+              value={selected[slot]}
+              onChange={(e) => updateSettings({ [SLOT_KEYS[slot].pack]: e.target.value })}
               className="min-w-0 flex-1 rounded-lg bg-zinc-800 px-3 py-2"
             >
               {VOICE_PACK_ROLES.map((role) => (
@@ -698,7 +707,7 @@ function VoicePackSettings() {
                 </optgroup>
               ))}
             </select>
-            <TestButton source={voicePackSource(selected[gender])} sample={VOICE_SAMPLES[gender]} />
+            <TestButton source={voicePackSource(selected[slot])} sample={VOICE_SAMPLES[slot]} />
           </div>
         </div>
       ))}
@@ -790,7 +799,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             value={voiceVolume}
             onChange={(v) => updateSettings({ voiceVolume: v })}
           />
-          <div className="grid grid-cols-4 gap-1 rounded-lg bg-zinc-800 p-1 text-sm">
+          <div className="grid grid-cols-5 gap-1 rounded-lg bg-zinc-800 p-1 text-sm">
             {(Object.keys(VOICE_MODE_LABEL) as VoiceMode[]).map((mode) => (
               <button
                 key={mode}
@@ -843,10 +852,11 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             </p>
           ) : (
             <>
-              <VoicePicker gender="female" />
-              <VoicePicker gender="male" />
+              {VOICE_SLOTS.map((slot) => (
+                <VoicePicker key={slot} slot={slot} />
+              ))}
               <p className="text-xs text-zinc-500">
-                Edge では自然な「Nanami（女性）」「Keita（男性）」が使えます。男性の声は低め・ゆっくりにして渋くしています。
+                Edge では自然な「Nanami（女性）」「Keita（男性）」が使えます。1人目は少し高め、2人目は低め・ゆっくり（渋め）にしています。
               </p>
             </>
           )}

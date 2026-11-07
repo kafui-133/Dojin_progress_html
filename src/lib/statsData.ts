@@ -1,4 +1,4 @@
-import { STAGES } from "@/lib/stages";
+import { STAGES, type StageDefinition } from "@/lib/stages";
 import { EMPTY_DAY, PX_TO_M, daysBetween, toDateString } from "@/store/useAppStore";
 import type { DailyStats, Manuscript, Project, ProjectType, StageId } from "@/types";
 
@@ -20,9 +20,9 @@ export function shortDate(date: string): string {
 }
 
 /** 完了した工程（日付つき）の一覧 */
-function completions(manuscript: Manuscript): { date: string; stage: StageId }[] {
+function completions(manuscript: Manuscript, stages: StageDefinition[]): { date: string; stage: StageId }[] {
   return manuscript.pages.flatMap((page) =>
-    STAGES.flatMap((stage) => {
+    stages.flatMap((stage) => {
       const at = page.done[stage.id];
       return at === undefined ? [] : [{ date: toDateString(new Date(at)), stage: stage.id }];
     }),
@@ -49,9 +49,14 @@ export interface Burnup {
   pacePerDay: number;
 }
 
-export function buildBurnup(manuscript: Manuscript, deadline: string, today: string): Burnup {
-  const items = completions(manuscript);
-  const total = manuscript.pages.length * STAGES.length;
+export function buildBurnup(
+  manuscript: Manuscript,
+  deadline: string,
+  today: string,
+  stages: StageDefinition[] = STAGES,
+): Burnup {
+  const items = completions(manuscript, stages);
+  const total = manuscript.pages.length * stages.length;
   const done = items.length;
   const firstDone = items.map((c) => c.date).sort()[0];
   const startedAt = manuscript.startedAt ? toDateString(new Date(manuscript.startedAt)) : today;
@@ -81,14 +86,18 @@ export function buildBurnup(manuscript: Manuscript, deadline: string, today: str
 export type StageCounts = Record<StageId, number>;
 
 /** 日ごとの、工程別の完了数（積み上げ棒グラフ用） */
-export function completionsByDay(manuscript: Manuscript, days: string[]): ({ date: string; label: string } & StageCounts)[] {
+export function completionsByDay(
+  manuscript: Manuscript,
+  days: string[],
+  stages: StageDefinition[] = STAGES,
+): ({ date: string; label: string } & StageCounts)[] {
   const rows = new Map(
     days.map((date) => [
       date,
       { date, label: shortDate(date), ...(Object.fromEntries(STAGES.map((s) => [s.id, 0])) as StageCounts) },
     ]),
   );
-  for (const c of completions(manuscript)) {
+  for (const c of completions(manuscript, stages)) {
     const row = rows.get(c.date);
     if (row) row[c.stage]++;
   }
@@ -128,7 +137,7 @@ export const ILLUSTRATION_METRICS = ACTIVITY_METRICS.filter((m) => m.id !== "typ
 export function firstActiveDay(dailyStats: Record<string, DailyStats>, manuscript: Manuscript | null, today: string): string {
   const candidates = [
     ...Object.keys(dailyStats),
-    ...(manuscript ? completions(manuscript).map((c) => c.date) : []),
+    ...(manuscript ? completions(manuscript, STAGES).map((c) => c.date) : []),
     today,
   ].sort();
   return candidates[0];
@@ -152,16 +161,18 @@ export function mergeDailyStats(projects: Project[]): Record<string, DailyStats>
   return merged;
 }
 
-/** 日ごとの値を、マンガ・イラスト別に（積み上げ棒グラフ用） */
+/** 日ごとの値を、マンガ・イラスト・イラスト本別に（積み上げ棒グラフ用） */
 export function byTypeDaily(projects: Project[], days: string[], metric: MetricDefinition) {
   const byType = (type: ProjectType) => mergeDailyStats(projects.filter((p) => p.type === type));
   const manga = byType("manga");
   const illustration = byType("illustration");
+  const illustbook = byType("illustbook");
   return days.map((date) => ({
     date,
     label: shortDate(date),
     manga: metric.toValue(manga[date] ?? EMPTY_DAY),
     illustration: metric.toValue(illustration[date] ?? EMPTY_DAY),
+    illustbook: metric.toValue(illustbook[date] ?? EMPTY_DAY),
   }));
 }
 

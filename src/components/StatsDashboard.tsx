@@ -11,6 +11,7 @@ import { useNow } from "@/lib/clock";
 import { cn } from "@/lib/utils";
 import { toDateString, useActiveProject, useAppStore } from "@/store/useAppStore";
 import Icon from "@/components/Icon";
+import { hasPages } from "@/lib/stages";
 
 type View = "project" | "integrated" | "csp";
 
@@ -78,7 +79,7 @@ export default function StatsDashboard() {
         <CspUsageStats usage={cspUsage} projects={projects} period={period} today={today} />
       ) : view === "integrated" ? (
         <IntegratedStats projects={projects} period={period} today={today} />
-      ) : project.type === "manga" ? (
+      ) : hasPages(project.type) ? (
         <MangaStats project={project} period={period} today={today} />
       ) : (
         <IllustrationStats project={project} period={period} today={today} />

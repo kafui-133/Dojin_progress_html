@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Check, Pencil } from "lucide-react";
 import { useState } from "react";
 import { useNow } from "@/lib/clock";
-import { getBoardStats, pagesWithDataBeyond } from "@/lib/stages";
+import { getBoardStats, pagesWithDataBeyond, stagesFor } from "@/lib/stages";
 import { MAX_PAGES, toDateString, useActiveProject, useAppStore } from "@/store/useAppStore";
 import Icon from "@/components/Icon";
 
@@ -208,7 +208,7 @@ export default function VisualStage() {
   const { manuscript } = project;
   const [isEditing, setIsEditing] = useState(false);
 
-  const board = getBoardStats(manuscript);
+  const board = getBoardStats(manuscript, stagesFor(project.type));
   const percent = board.percent;
   const stageIndex = getStageIndex(percent);
   const stage = STAGES[stageIndex];

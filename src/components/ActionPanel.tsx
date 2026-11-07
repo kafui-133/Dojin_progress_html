@@ -16,6 +16,7 @@ import {
   useAppStore,
 } from "@/store/useAppStore";
 import Icon from "@/components/Icon";
+import { hasPages } from "@/lib/stages";
 
 function formatRemaining(ms: number): string {
   const totalSec = Math.ceil(ms / 1000);
@@ -70,7 +71,8 @@ function ComboGauge({ now }: { now: number }) {
 }
 
 export default function ActionPanel() {
-  const isManga = useActiveProject().type === "manga";
+  const type = useActiveProject().type;
+  const isManga = type === "manga";
   const now = useNow();
   const combo = useAppStore((s) => s.combo);
   const recordProgress = useAppStore((s) => s.recordProgress);
@@ -87,7 +89,7 @@ export default function ActionPanel() {
     <section className="flex flex-col gap-4 koma p-4">
       <ComboGauge now={now} />
 
-      {isManga ? (
+      {hasPages(type) ? (
         <ManuscriptBoard />
       ) : (
         <p className="rounded-lg bg-zinc-800/60 p-3 text-xs text-zinc-400">
@@ -95,7 +97,7 @@ export default function ActionPanel() {
         </p>
       )}
 
-      {/* ページに紐づかない記録（以前からのボタン）。EXP とコンボだけ増える */}
+      {/* ページに紐づかない記録（以前からのボタン。コマ・吹き出しなどマンガ向け）。EXP とコンボだけ増える */}
       {isManga && (
         <details className="group rounded-lg border border-zinc-600 p-3">
           <summary className="cursor-pointer text-xs font-bold text-zinc-400">
