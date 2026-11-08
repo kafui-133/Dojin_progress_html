@@ -1,6 +1,6 @@
 "use client";
 
-import { Coffee } from "lucide-react";
+import { Coffee, Play } from "lucide-react";
 import { useEffect } from "react";
 import AudioUnlockBanner from "@/components/AudioUnlockBanner";
 import EffectOverlay from "@/components/EffectOverlay";
@@ -11,7 +11,7 @@ import { soundManager } from "@/lib/soundManager";
 import { useIsClient } from "@/lib/useIsClient";
 import { speak, voiceOptions } from "@/lib/voice";
 import { LINES } from "@/lib/voiceLines";
-import { getPomodoroRemaining, isResting, useAppStore } from "@/store/useAppStore";
+import { getPomodoroRemaining, isPomodoroBreak, useAppStore } from "@/store/useAppStore";
 import { ensureCurrentPanel, startPanelTracking } from "@/store/usePanelStore";
 
 /** クリスタ連携の接続を保ち、状態をストアに知らせる */
@@ -62,12 +62,43 @@ function PomodoroController() {
   return null;
 }
 
+function clock(ms: number): string {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const mmss = `${String(m).padStart(h > 0 ? 2 : 1, "0")}:${String(sec % 60).padStart(2, "0")}`;
+  return h > 0 ? `${h}:${mmss}` : mmss;
+}
+
 /** 休憩中のお知らせ（演出は止まり、BGM はゆったりした曲になる） */
 function RestBanner() {
   const now = useNow(500);
   const pomodoro = useAppStore((s) => s.pomodoro);
+  const restSince = useAppStore((s) => s.restSince);
   const setTimerMode = useAppStore((s) => s.setTimerMode);
-  if (!isResting(pomodoro, now)) return null;
+  const endRest = useAppStore((s) => s.endRest);
+
+  if (restSince !== null) {
+    return (
+      <div className="fixed bottom-4 left-4 z-[55] flex max-w-sm items-center gap-3 koma px-4 py-3 text-sm text-zinc-100">
+        <Coffee className="size-6 shrink-0 text-emerald-300" aria-hidden />
+        <div className="flex flex-col">
+          <span className="font-black">
+            お休み中 <span className="tabular-nums">{clock(now - restSince)}</span>
+          </span>
+          <span className="text-xs text-zinc-400">クリスタの時間は休憩として数え、演出もお休みです。</span>
+        </div>
+        <button
+          type="button"
+          onClick={endRest}
+          className="flex shrink-0 items-center gap-1 rounded-lg bg-fuchsia-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-fuchsia-500"
+        >
+          <Play className="size-3.5" /> 再開
+        </button>
+      </div>
+    );
+  }
+  if (!isPomodoroBreak(pomodoro, now)) return null;
 
   const remaining = Math.ceil(getPomodoroRemaining(pomodoro, now) / 1000);
   return (

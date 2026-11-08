@@ -207,8 +207,14 @@ export function getPomodoroRemaining(pomodoro: PomodoroState, now: number): numb
 }
 
 /** 休憩中（休憩のタイマーが動いている）か。休憩中は BGM をゆったりにし、演出と ZONE を止める */
-export function isResting(pomodoro: PomodoroState, now: number): boolean {
+/** ポモドーロの休憩中か */
+export function isPomodoroBreak(pomodoro: PomodoroState, now: number): boolean {
   return pomodoro.mode === "break" && pomodoro.endAt !== null && now < pomodoro.endAt;
+}
+
+/** 休憩中か（ポモドーロの休憩か「お休み」）。休憩中は演出・ZONE を止め、クリスタの時間は休憩として数える */
+export function isResting(state: { pomodoro: PomodoroState; restSince: number | null }, now: number): boolean {
+  return state.restSince !== null || isPomodoroBreak(state.pomodoro, now);
 }
 
 export const DEFAULT_ZONE_DAILY_LIMIT = 3;
@@ -245,7 +251,7 @@ export function isRestAt(pomodoro: PomodoroState, at: number): boolean {
 
 /**
  * クリスタの使用時間を、ブリッジから届いた分だけ足す。
- * ポモドーロの休憩中の分はアクティブ・ノンアクティブ（起動時間）に数えず、休憩として別に記録する。
+ * ポモドーロの休憩中・お休み中の分はアクティブ・ノンアクティブ（起動時間）に数えず、休憩として別に記録する。
  */
 export function addCspUsage(
   usage: Record<string, CspUsageDay>,
@@ -402,6 +408,8 @@ export interface AppState extends AppSettings {
   /** 勢い（その日のうちは再読込しても続く。日付が変わったら 0 から） */
   flow: FlowState;
   pomodoro: PomodoroState;
+  /** 「お休み」を押した時刻（お休み中でなければ null）。アプリを開いたまま休むとき用 */
+  restSince: number | null;
   /** クリスタの使用時間（日付ごと。全プロジェクト共通） */
   cspUsage: Record<string, CspUsageDay>;
   /** 直近の進捗アクション結果。EffectOverlay がこれを監視して演出する */
@@ -437,6 +445,9 @@ export interface AppState extends AppSettings {
   // ポモドーロ
   startTimer: (now?: number) => void;
   pauseTimer: (now?: number) => void;
+  /** お休みにする（ポモドーロは一時停止）／再開する */
+  startRest: (now?: number) => void;
+  endRest: () => void;
   resetTimer: () => void;
   setTimerMode: (mode: PomodoroMode) => void;
   /** 作業・休憩の長さ（分）を変える */
@@ -475,7 +486,7 @@ export function getZonesToday(projects: Project[], today: string): number {
 
 /** 今 ZONE に入れるか（1日の上限・修羅場モード・休憩中） */
 export function canEnterZone(state: AppState, now: number): boolean {
-  if (isResting(state.pomodoro, now)) return false;
+  if (isResting(state, now)) return false;
   if (state.shurabaMode) return true;
   return getZonesToday(state.projects, toDateString(new Date(now))) < state.zoneDailyLimit;
 }
@@ -603,6 +614,7 @@ export const useAppStore = create<AppState>()(
         activeProjectId: initialProject.id,
         flow: initialFlow,
         pomodoro: initialPomodoro,
+        restSince: null,
         cspUsage: {},
         lastAction: null,
         lastStroke: null,
@@ -873,6 +885,14 @@ export const useAppStore = create<AppState>()(
 
         resetTimer: () => set((state) => ({ pomodoro: freshPomodoro(state, state.pomodoro.mode) })),
 
+        startRest: (now = clockNow()) => {
+          if (get().restSince !== null) return;
+          get().pauseTimer(now);
+          set({ restSince: now });
+        },
+
+        endRest: () => set({ restSince: null }),
+
         setTimerMode: (mode) => set((state) => ({ pomodoro: freshPomodoro(state, mode) })),
 
         setPomodoroMinutes: ({ focus, break: rest }) =>
@@ -938,7 +958,12 @@ export const useAppStore = create<AppState>()(
 
         recordCspUsage: (ticks) =>
           set((state) => {
-            const cspUsage = addCspUsage(state.cspUsage, ticks, (at) => isRestAt(state.pomodoro, at));
+            const { restSince } = state;
+            const cspUsage = addCspUsage(
+              state.cspUsage,
+              ticks,
+              (at) => isRestAt(state.pomodoro, at) || (restSince !== null && at > restSince),
+            );
             return cspUsage === state.cspUsage ? {} : { cspUsage };
           }),
 
@@ -1020,6 +1045,7 @@ export const useAppStore = create<AppState>()(
         activeProjectId: state.activeProjectId,
         flow: state.flow,
         pomodoro: state.pomodoro,
+        restSince: state.restSince,
         cspUsage: state.cspUsage,
         ...Object.fromEntries(SETTING_KEYS.map((key) => [key, state[key]])),
       }),

@@ -268,7 +268,7 @@ function LiveInk() {
 function CspUsageToday() {
   const cspState = useBridgeStatus((s) => s.cspState);
   const now = useNow(5_000);
-  const resting = useAppStore((s) => isResting(s.pomodoro, now));
+  const resting = useAppStore((s) => isResting(s, now));
   // ブリッジは実際の時刻で送ってくるので、日付も実際の時刻で見る
   const today = toDateString(new Date());
   const day = useAppStore((s) => s.cspUsage[today]) ?? EMPTY_CSP_DAY;
@@ -342,7 +342,7 @@ function FlowGauge() {
   const zonesToday = useAppStore((s) => getZonesToday(s.projects, toDateString(new Date(now))));
   const zoneDailyLimit = useAppStore((s) => s.zoneDailyLimit);
   const shurabaMode = useAppStore((s) => s.shurabaMode);
-  const resting = useAppStore((s) => isResting(s.pomodoro, now));
+  const resting = useAppStore((s) => isResting(s, now));
   const zone = isInZone(flow, now);
   const rushAlive = flow.lastActivityAt > 0 && now - flow.lastActivityAt <= RUSH_GAP_MS;
 

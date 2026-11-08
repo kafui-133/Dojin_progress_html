@@ -142,7 +142,7 @@ export default function EffectOverlay() {
   const flow = useAppStore((s) => s.flow);
   const isBgmOn = useAppStore((s) => s.isBgmOn);
   const restBgmId = useAppStore((s) => s.restBgmId);
-  const resting = useAppStore((s) => isResting(s.pomodoro, now));
+  const resting = useAppStore((s) => isResting(s, now));
   const bgmNormalId = useAppStore((s) => s.bgmNormalId);
   const bgmFeverId = useAppStore((s) => s.bgmFeverId);
   const [effect, setEffect] = useState<OverlayEffect | null>(null);
@@ -197,7 +197,7 @@ export default function EffectOverlay() {
 
     const unsubscribe = useAppStore.subscribe((state, prev) => {
       // 休憩中は演出を止めて、気持ちを落ち着かせる（記録はされる）
-      if (isResting(state.pomodoro, clockNow())) return;
+      if (isResting(state, clockNow())) return;
       if (state.lastAction && state.lastAction !== prev.lastAction) {
         play(fromAction(state.lastAction));
       } else {

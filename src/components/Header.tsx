@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { BarChart3, FolderOpen, LayoutDashboard, Maximize, Minimize, Music, Settings, VolumeX } from "lucide-react";
+import { BarChart3, Coffee, FolderOpen, LayoutDashboard, Maximize, Minimize, Music, Play, Settings, VolumeX } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -20,6 +20,9 @@ export default function Header() {
   const setBgmOn = useAppStore((s) => s.setBgmOn);
   const shurabaMode = useAppStore((s) => s.shurabaMode);
   const updateSettings = useAppStore((s) => s.updateSettings);
+  const restSince = useAppStore((s) => s.restSince);
+  const startRest = useAppStore((s) => s.startRest);
+  const endRest = useAppStore((s) => s.endRest);
 
   const streak = getEffectiveStreak(progress, toDateString(new Date(now)));
 
@@ -89,6 +92,20 @@ export default function Header() {
         <span className="whitespace-nowrap text-sm font-bold tabular-nums sm:text-base">
           <Icon name="coin" /> {progress.coins.toLocaleString()}
         </span>
+
+        {/* アプリを開いたまま休むとき。お休み中はクリスタの時間を休憩として数え、演出を止める */}
+        <button
+          type="button"
+          onClick={() => (restSince === null ? startRest() : endRest())}
+          title={restSince === null ? "お休みにする（ポモドーロの休憩と同じ扱い。クリスタの時間は休憩として数えます）" : "お休みを終えて再開する"}
+          className={cn(
+            "flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-sm font-bold transition sm:px-3",
+            restSince === null ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-50" : "bg-fuchsia-600 text-white hover:bg-fuchsia-500",
+          )}
+        >
+          {restSince === null ? <Coffee className="size-4" /> : <Play className="size-4" />}
+          <span className="hidden sm:inline">{restSince === null ? "お休み" : "再開"}</span>
+        </button>
 
         <button
           type="button"

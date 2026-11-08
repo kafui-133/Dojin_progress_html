@@ -40,7 +40,7 @@ export const useBridgeStatus = create<{
 export function handleBridgeEvent(event: BridgeEvent): void {
   const store = useAppStore.getState();
   // 休憩中は記録だけして、効果音は鳴らさない
-  const sound = store.isStrokeSoundOn && !isResting(store.pomodoro, clockNow());
+  const sound = store.isStrokeSoundOn && !isResting(store, clockNow());
   if (event.type === "stroke") {
     const result = store.recordStroke({ durationMs: event.durationMs });
     if (sound) soundManager.playStroke(result.rush);
